@@ -38,7 +38,7 @@ dependencies = [
     # Lift after a dedicated pydantic-2.13 migration. (Do NOT pin transitive
     # deps here — it churns the lockfiles' `# via` annotations; see ADR-0037
     # PR history.)
-    "pydantic==2.11.10",
+    "pydantic==2.13.4",
     "pyyaml>=6.0",
     # NOTE: bitwarden-sdk is deliberately NOT here. It ships under the
     # proprietary Bitwarden SDK License (not Apache-2.0 / not open source),
