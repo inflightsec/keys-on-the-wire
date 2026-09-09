@@ -195,16 +195,11 @@ ignore_missing_imports = true
 skips = ["B101", "B404", "B603"]
 exclude_dirs = ["tests", ".venv"]
 
-[tool.uv]
-# mitmproxy 12.2.3 (the newest release, 2026-05-12) declares
-# tornado<=6.5.5,>=6.5.0. That upper bound is "tested up to", not a known
-# incompatibility, and it stranded seven tornado advisories as unfixable —
-# GHSA-mpf4-983q-p7j4, GHSA-8423-8fgw-73vq, GHSA-wwv5-g3v4-889x, plus the four
-# previously suppressed in osv-scanner.toml. All are fixed in 6.5.6+.
-#
-# Overriding the bound resolves clean: mitmproxy 12.2.3 + tornado 6.5.8 imports
-# fine and the full suite is green. tornado is mitmproxy's web UI/master
-# dependency; kow never starts mitmweb and imports tornado nowhere in src/.
-#
-# Drop this override once a mitmproxy release raises the cap on its own.
-override-dependencies = ["tornado>=6.5.8"]
+# NO `[tool.uv] override-dependencies` for tornado. Tried and reverted
+# 2026-09-06: uv honours an override at compile/sync time, but CI and every
+# end user install with pip, which re-checks mitmproxy's declared
+# tornado<=6.5.5 and dies with ResolutionImpossible. Worse, the published
+# wheel only declares mitmproxy>=11.0, so a user's pip resolves tornado 6.5.5
+# regardless — the override would have turned the scanners green without
+# making a single install safer. The tornado advisories stay waived in
+# osv-scanner.toml until a mitmproxy release raises the cap.

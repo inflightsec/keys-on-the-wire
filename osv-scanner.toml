@@ -1,17 +1,58 @@
 # Auto-discovered by the pre-commit docker hook and the CI osv-scan job.
 #
-# All ignored CVEs are in TRANSITIVE deps of mitmproxy (msgpack, h2, and
-# cryptography's cert-verify / PKCS#7-decrypt paths), not in AVP's credential-
-# injection path. They are suppressed only because the fix is not yet
-# installable — never to silence an applicable, fixable issue.
+# All ignored CVEs are in TRANSITIVE deps of mitmproxy (tornado, msgpack, h2,
+# and cryptography's cert-verify / PKCS#7-decrypt paths), not in AVP's
+# credential-injection path. They are suppressed only because the fix is not
+# yet installable — never to silence an applicable, fixable issue.
 
-# --- tornado: NO LONGER SUPPRESSED -------------------------------------------
-# Seven tornado advisories used to live here, all "blocked by mitmproxy's
-# tornado<=6.5.5 pin". That bound turned out to be conservative rather than a
-# real incompatibility, so pyproject.toml now carries a
-# `[tool.uv] override-dependencies = ["tornado>=6.5.8"]` and the lockfiles pull
-# 6.5.8, which fixes every one of them. Nothing to ignore. If that override is
-# ever removed, these come back and have to be re-triaged.
+# --- tornado: pinned by mitmproxy at tornado<=6.5.5,>=6.5.0 ------------------
+# tornado 6.5.6+ (the fixes) CANNOT be installed until mitmproxy ships a
+# release that relaxes the <=6.5.5 pin (mitmproxy 12.2.3, 2026-05-12, is both
+# current and the newest on PyPI). tornado is used by mitmproxy's web UI/master,
+# not AVP's request path, and kow never starts mitmweb.
+#
+# A `[tool.uv] override-dependencies = ["tornado>=6.5.8"]` was tried on
+# 2026-09-06 and reverted the same day. uv honours it, pip does not: CI's
+# `pip install --require-hashes` dies with ResolutionImpossible, and because the
+# wheel only declares mitmproxy>=11.0 an end user's pip picks 6.5.5 anyway. It
+# would have greened the scanners without making one install safer.
+#
+# Drop all seven when a mitmproxy release allows tornado>=6.5.6 and a regen
+# pulls it.
+
+[[IgnoredVulns]]
+id = "GHSA-cx3h-4qpv-8hc9"
+reason = "tornado OOB read, CVSS 3.7, transitive via mitmproxy; fix (6.5.6+) blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-3x9g-8vmp-wqvf"
+# CVSS 7.7 — credential forwarding when follow_redirects=True. N/A to AVP:
+# the proxy never follows redirects (architecture.md §4.2); tornado is not on
+# AVP's credential path.
+reason = "tornado follow_redirects cred-forwarding; N/A (AVP never follows redirects); fix blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-mgf9-4vpg-hj56"
+reason = "tornado CVSS 7.5, transitive via mitmproxy; fix (6.5.6+) blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-pw6j-qg29-8w7f"
+reason = "tornado CVSS 5.9, transitive via mitmproxy; fix (6.5.6+) blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-mpf4-983q-p7j4"
+# CVSS 7.5, availability-only. Urlencoded body parsing omits max_num_fields, so
+# one request stalls tornado's event loop. Needs a tornado-served endpoint;
+# kow starts none (src/ imports neither tornado nor mitmweb).
+reason = "tornado urlencoded parse_qs event-loop stall, CVSS 7.5 availability-only; transitive via mitmproxy, kow serves no tornado endpoint; fix (6.5.8) blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-8423-8fgw-73vq"
+reason = "tornado multipart split() memory-amplification DoS, CVSS 4.0; transitive via mitmproxy, not on AVP's request path; fix (6.5.8) blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-wwv5-g3v4-889x"
+reason = "tornado set_cookie kwargs attribute injection (incomplete CVE-2026-35536 fix), CVSS 4.0; AVP calls no tornado set_cookie; fix (6.5.8) blocked by mitmproxy's tornado<=6.5.5 pin"
 
 # --- msgpack: pinned by mitmproxy at msgpack<=1.1.2 --------------------------
 [[IgnoredVulns]]

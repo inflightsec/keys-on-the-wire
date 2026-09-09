@@ -306,6 +306,16 @@ jobs:
         # lockfiles and the same transitive mitmproxy CVEs, so a waiver in
         # one without the other is what lets this job go red while osv-scan
         # stays green.
+        #   GHSA-cx3h-4qpv-8hc9  tornado OOB read, CVSS 3.7, transitive.
+        #   GHSA-3x9g-8vmp-wqvf  tornado follow_redirects cred-forwarding;
+        #                        N/A, AVP never follows redirects (architecture 4.2).
+        #   GHSA-mgf9-4vpg-hj56  tornado CVSS 7.5, transitive.
+        #   GHSA-pw6j-qg29-8w7f  tornado CVSS 5.9, transitive.
+        #   GHSA-mpf4-983q-p7j4  tornado urlencoded event-loop stall, CVSS 7.5,
+        #                        availability-only; kow serves no tornado endpoint.
+        #   GHSA-8423-8fgw-73vq  tornado multipart memory amplification, CVSS 4.0.
+        #   GHSA-wwv5-g3v4-889x  tornado set_cookie kwargs attribute injection,
+        #                        CVSS 4.0; AVP calls no tornado set_cookie.
         #   GHSA-6v7p-g79w-8964  msgpack OOB read; AVP unpacks no untrusted msgpack.
         #   PYSEC-2026-3552/3/4  cryptography X.509-verify + PKCS#7-decrypt CVEs;
         #                        N/A, AVP only loads a PEM key + signs RS256/ES256
@@ -313,17 +323,22 @@ jobs:
         #   GHSA-6hr6-w5qg-qmwg  h2 HTTP request smuggling (dup Host on HTTP/2
         #                        ->1.1 downgrade), CVSS 5.3, transitive; needs an
         #                        untrusted HTTP/2 client (AVP's client is local).
-        # The four tornado waivers that used to head this list are GONE: the
-        # `[tool.uv] override-dependencies` in pyproject.toml lifts mitmproxy's
-        # conservative tornado<=6.5.5 cap, the lockfiles pull 6.5.8, and every
-        # tornado advisory is fixed there. Do not re-add them without also
-        # removing that override.
-        # msgpack 1.2.1 is still blocked by mitmproxy's msgpack<=1.1.2 pin,
-        # cryptography 49/50 by its cryptography<=48.1 pin, and h2 4.4.1 by
-        # mitmproxy's exact h2==4.3.0 pin; drop each waiver when a mitmproxy
-        # release relaxes the pin and a lockfile regen pulls the fix.
+        # tornado fixes (6.5.6+) are blocked by mitmproxy's tornado<=6.5.5 pin,
+        # msgpack 1.2.1 by its msgpack<=1.1.2 pin, cryptography 49/50 by its
+        # cryptography<=48.1 pin, and h2 4.4.1 by mitmproxy's exact h2==4.3.0 pin;
+        # drop each waiver when a mitmproxy release relaxes the pin and a
+        # lockfile regen pulls the fix. A uv override-dependencies escape from
+        # the tornado cap was tried and reverted on 2026-09-06: pip ignores it
+        # and end users never see it. See pyproject.toml.
         run: >-
           pip-audit --strict --requirement requirements.lock
+          --ignore-vuln GHSA-cx3h-4qpv-8hc9
+          --ignore-vuln GHSA-3x9g-8vmp-wqvf
+          --ignore-vuln GHSA-mgf9-4vpg-hj56
+          --ignore-vuln GHSA-pw6j-qg29-8w7f
+          --ignore-vuln GHSA-mpf4-983q-p7j4
+          --ignore-vuln GHSA-8423-8fgw-73vq
+          --ignore-vuln GHSA-wwv5-g3v4-889x
           --ignore-vuln GHSA-6v7p-g79w-8964
           --ignore-vuln PYSEC-2026-3552
           --ignore-vuln PYSEC-2026-3553
@@ -340,6 +355,13 @@ jobs:
         # osv-scanner.toml and the production audit step above).
         run: >-
           pip-audit --strict --requirement requirements-dev.lock
+          --ignore-vuln GHSA-cx3h-4qpv-8hc9
+          --ignore-vuln GHSA-3x9g-8vmp-wqvf
+          --ignore-vuln GHSA-mgf9-4vpg-hj56
+          --ignore-vuln GHSA-pw6j-qg29-8w7f
+          --ignore-vuln GHSA-mpf4-983q-p7j4
+          --ignore-vuln GHSA-8423-8fgw-73vq
+          --ignore-vuln GHSA-wwv5-g3v4-889x
           --ignore-vuln GHSA-6v7p-g79w-8964
           --ignore-vuln PYSEC-2026-3552
           --ignore-vuln PYSEC-2026-3553
