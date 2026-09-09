@@ -48,16 +48,41 @@ import stat
 import warnings
 from pathlib import Path
 
-# 16 chars. Contains the "PLACEHOLDER" marker config.py requires. Single
-# source of truth for the prefix — STORED_PLACEHOLDER_RE and the CLI's
-# self-validation sentinel build from THIS constant, never a copy.
+# 16 chars each. Both contain the "PLACEHOLDER" marker config.py requires, and
+# both are the same length, so every downstream length invariant is unaffected
+# by which one a placeholder carries.
 #
-# ADR-0045 (rename): minting and derivation DELIBERATELY still emit the
-# ``avp-`` prefix in 1.0.0. The daemon matches a request by ``spec.placeholder
-# in value`` (policy.py), so the minted prefix IS the on-wire contract; keeping
-# it byte-identical means every agent's existing env file keeps injecting with
-# zero migration. The mint flips to ``kow-`` in 2.0.0 (with a migration path).
-PLACEHOLDER_PREFIX = "avp-PLACEHOLDER-"
+# ADR-0045 (rename) originally kept ``avp-`` for BOTH minting and derivation.
+# That is now split, because the two have different compatibility properties:
+#
+#   * MINTED placeholders (:func:`mint_placeholder`, ADR-0029) are written into
+#     the vault note and read back from it, so the daemon matches whatever
+#     string is stored. Changing what we mint touches only NEW bindings, and
+#     old ones keep working as long as we still ACCEPT ``avp-``. Flipped.
+#
+#   * DERIVED placeholders (:func:`derive_placeholder`) are recomputed
+#     independently by both ``kow env`` and the daemon and stored nowhere. The
+#     daemon matches by ``spec.placeholder in value`` (policy.py), so flipping
+#     the derived prefix would make the daemon derive ``kow-…`` while an
+#     already-written ``~/.config/kow/env`` still exports ``avp-…``, and
+#     injection would silently stop until the operator re-ran ``kow env``.
+#     NOT flipped here; that needs its own migration.
+#
+# Recognition is deliberately wider than minting: anything that ASKS "is this a
+# placeholder?" must accept both eras, or a legacy placeholder gets mistaken
+# for a live credential.
+MINT_PREFIX = "kow-PLACEHOLDER-"
+LEGACY_PREFIX = "avp-PLACEHOLDER-"
+ACCEPTED_PREFIXES = (MINT_PREFIX, LEGACY_PREFIX)
+
+# What derivation still emits. Separate name so the two decisions above can
+# move independently and a reader can see which is which.
+DERIVE_PREFIX = LEGACY_PREFIX
+
+# Back-compat alias for callers that mean "the prefix we emit today" (the CLI
+# self-validation sentinels). Never use it to RECOGNISE a placeholder — use
+# ACCEPTED_PREFIXES or STORED_PLACEHOLDER_RE for that.
+PLACEHOLDER_PREFIX = MINT_PREFIX
 
 # Truncated base32 tail length. 21 chars * 5 bits/char = 105 bits of
 # entropy (>=104). Total placeholder length = 16 + 21 = 37 >= 24.
@@ -80,8 +105,12 @@ _DEFAULT_SALT_BASENAME = "install-salt"
 #   * the tail's minimum length (21 chars = 105 bits) keeps a hand-typed
 #     low-entropy string ("token", "Bearer") structurally unrepresentable —
 #     a weak placeholder can't match innocent traffic because it can't parse.
-# Built from PLACEHOLDER_PREFIX so the prefix lives in exactly one place.
-STORED_PLACEHOLDER_RE = re.compile(rf"^{re.escape(PLACEHOLDER_PREFIX)}[a-z2-7]{{21,64}}$")
+# Built from ACCEPTED_PREFIXES so the prefixes live in exactly one place. Both
+# eras match: we mint ``kow-`` now, but every ``avp-`` placeholder already
+# pasted into a vault note must keep parsing, or upgrading kow would silently
+# stop injecting for existing users.
+_PREFIX_ALT = "|".join(re.escape(p) for p in ACCEPTED_PREFIXES)
+STORED_PLACEHOLDER_RE = re.compile(rf"^(?:{_PREFIX_ALT})[a-z2-7]{{21,64}}$")
 
 # Minted tail length: 26 base32 chars = 130 bits from a 16-byte CSPRNG draw.
 _MINT_TAIL_CHARS = 26
@@ -96,7 +125,7 @@ def mint_placeholder() -> str:
     :data:`STORED_PLACEHOLDER_RE`.
     """
     tail = base64.b32encode(secrets.token_bytes(16)).decode("ascii").lower().rstrip("=")
-    return PLACEHOLDER_PREFIX + tail[:_MINT_TAIL_CHARS]
+    return MINT_PREFIX + tail[:_MINT_TAIL_CHARS]
 
 
 class PlaceholderCollisionError(RuntimeError):
@@ -160,7 +189,7 @@ def derive_placeholder(secret_name: str, install_salt: bytes) -> str:
     _check_salt(install_salt)
     if not secret_name:
         raise ValueError("secret_name must be a non-empty string")
-    return PLACEHOLDER_PREFIX + _derive_tail(secret_name, install_salt)
+    return DERIVE_PREFIX + _derive_tail(secret_name, install_salt)
 
 
 def derive_placeholder_map(

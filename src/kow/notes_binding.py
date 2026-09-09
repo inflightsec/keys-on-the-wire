@@ -531,13 +531,14 @@ def _resolve_stored_placeholder(secret_name: str, raw: dict, fallback: str) -> s
         return InvalidBinding(
             secret_name,
             "`placeholder` must be a string matching "
-            "`avp-PLACEHOLDER-<21-64 lowercase base32 chars>` "
+            "`kow-PLACEHOLDER-<21-64 lowercase base32 chars>` "
+            "(the legacy `avp-` prefix is still accepted) "
             f"(mint one with `kow binding new`); got {stored!r}.",
         )
     return stored
 
 
-def stored_placeholder_from_note(note: str | None) -> str | None:
+def stored_placeholder_from_note(note: str | None, *, secret_name: str) -> str | None:
     """Extract a note's valid stored placeholder, or None (ADR-0029).
 
     Read-side helper for surfaces that need the placeholder WITHOUT running a
@@ -545,13 +546,19 @@ def stored_placeholder_from_note(note: str | None) -> str | None:
     note that is unmarked, malformed, or carries an invalid/missing
     ``placeholder`` yields None — such a secret either has no binding or will
     fail loud through the real parser; the caller falls back to derivation.
+
+    ``secret_name`` is REQUIRED (keyword-only) so the marker-gate's
+    forgot-the-marker warning names the real secret. It used to pass a literal
+    ``<stored-placeholder-probe>`` sentinel, which reached operators as a warning
+    about a secret that does not exist — the diagnostic was right, the subject
+    was nonsense. No default, so a future caller cannot reintroduce that.
     """
     if note is None or not note.strip():
         return None
-    gated = _strip_binding_marker("<stored-placeholder-probe>", note)
+    gated = _strip_binding_marker(secret_name, note)
     if isinstance(gated, NoBinding | InvalidBinding):
         return None
-    loaded = _load_note_mapping("<stored-placeholder-probe>", gated)
+    loaded = _load_note_mapping(secret_name, gated)
     if isinstance(loaded, NoBinding | InvalidBinding):
         return None
     stored = loaded.get("placeholder")

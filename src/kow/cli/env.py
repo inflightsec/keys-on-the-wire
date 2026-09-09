@@ -197,7 +197,7 @@ def run_env(
 
         notes = list_secret_notes(backend)
         for name, note in notes.items():
-            pinned = stored_placeholder_from_note(note)
+            pinned = stored_placeholder_from_note(note, secret_name=name)
             # A file declaration is authoritative for the secrets it names;
             # note pins fill in the rest (ADR-0029).
             if pinned is not None and name not in stored:

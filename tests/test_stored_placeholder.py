@@ -146,15 +146,20 @@ def test_inconsistent_indentation_still_fails_loud():
 
 def test_helper_extracts_valid_stored():
     note = f"# avp-binding\nhost: api.example.com\nplaceholder: {_STORED}\n"
-    assert stored_placeholder_from_note(note) == _STORED
+    assert stored_placeholder_from_note(note, secret_name="K") == _STORED
 
 
 def test_helper_none_for_unmarked_missing_or_invalid():
-    assert stored_placeholder_from_note(None) is None
-    assert stored_placeholder_from_note("just a human description") is None
-    assert stored_placeholder_from_note("# avp-binding\nhost: api.example.com\n") is None
+    assert stored_placeholder_from_note(None, secret_name="K") is None
+    assert stored_placeholder_from_note("just a human description", secret_name="K") is None
     assert (
-        stored_placeholder_from_note("# avp-binding\nhost: api.example.com\nplaceholder: weak\n")
+        stored_placeholder_from_note("# avp-binding\nhost: api.example.com\n", secret_name="K")
+        is None
+    )
+    assert (
+        stored_placeholder_from_note(
+            "# avp-binding\nhost: api.example.com\nplaceholder: weak\n", secret_name="K"
+        )
         is None
     )
 
@@ -375,7 +380,9 @@ def test_binding_new_gsm_embeds_placeholder(capsys):
         capsys,
     )
     assert code == 0
-    assert "placeholder: avp-PLACEHOLDER-" in out.replace("\\n", "\n")
+    # Newly minted placeholders carry the `kow-` prefix; `avp-` ones are still
+    # accepted on read but are no longer emitted. See test_rename_backcompat.
+    assert "placeholder: kow-PLACEHOLDER-" in out.replace("\\n", "\n")
 
 
 # ── addon end-to-end ────────────────────────────────────────────────────────

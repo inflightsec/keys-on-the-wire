@@ -30,7 +30,7 @@ from kow.config import (
     validate_placeholder_invariants,
 )
 from kow.placeholders import (
-    PLACEHOLDER_PREFIX,
+    DERIVE_PREFIX,
     InstallSaltError,
     PlaceholderCollisionError,
     derive_placeholder,
@@ -49,8 +49,10 @@ _SALT_B = b"\x11" * 32
 
 
 def test_derive_placeholder_has_avp_prefix() -> None:
+    # Derivation deliberately still emits `avp-` — see test_rename_backcompat.
+    # Minting is the half that flipped to `kow-`.
     ph = derive_placeholder("ANTHROPIC_API_KEY", _SALT)
-    assert ph.startswith(PLACEHOLDER_PREFIX)
+    assert ph.startswith(DERIVE_PREFIX)
 
 
 def test_derive_placeholder_satisfies_config_invariants() -> None:
@@ -65,7 +67,7 @@ def test_derive_placeholder_satisfies_config_invariants() -> None:
 
 def test_derive_placeholder_tail_is_lowercase_base32_no_padding() -> None:
     ph = derive_placeholder("ANTHROPIC_API_KEY", _SALT)
-    tail = ph[len(PLACEHOLDER_PREFIX) :]
+    tail = ph[len(DERIVE_PREFIX) :]
     # base32 alphabet is A-Z2-7; lowercased -> a-z2-7. No '=' padding.
     assert "=" not in tail
     assert all(c in "abcdefghijklmnopqrstuvwxyz234567" for c in tail), tail
@@ -74,7 +76,7 @@ def test_derive_placeholder_tail_is_lowercase_base32_no_padding() -> None:
 def test_derive_placeholder_tail_has_at_least_104_bits() -> None:
     """>=104 bits of entropy => >=21 base32 chars (21 * 5 = 105 bits)."""
     ph = derive_placeholder("ANTHROPIC_API_KEY", _SALT)
-    tail = ph[len(PLACEHOLDER_PREFIX) :]
+    tail = ph[len(DERIVE_PREFIX) :]
     assert len(tail) >= 21
 
 

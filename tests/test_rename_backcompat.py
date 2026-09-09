@@ -1,21 +1,33 @@
 """Backward-compat guarantees for the agent-vault-proxy -> keys-on-the-wire rename.
 
-The rename is deliberately byte-identical on the wire and on disk in 1.0.0
-(ADR-0045): the minted placeholder prefix, config paths, and systemd unit are
-UNCHANGED, so every existing deployment keeps injecting with zero migration. The
-note/annotation marker now DEFAULTS to `# kow-binding` but still accepts the old
-`# avp-binding` (both parse identically). What these lock:
+The rename keeps every EXISTING deployment injecting with zero migration
+(ADR-0045): config paths and the systemd unit are unchanged, and the
+note/annotation marker DEFAULTS to `# kow-binding` while still accepting the old
+`# avp-binding` (both parse identically).
 
-  * minting/derivation still emit the `avp-PLACEHOLDER-` prefix — the on-wire
-    contract the daemon matches by `spec.placeholder in value` (unchanged);
+Placeholders are now split, because minting and derivation have different
+compatibility properties:
+
+  * MINTING emits `kow-PLACEHOLDER-`. A minted placeholder is stored in the
+    vault note and read back from it, so the daemon matches whatever string is
+    there. New bindings get `kow-`; every `avp-` one already in a vault keeps
+    parsing because recognition accepts both eras.
+  * DERIVATION still emits `avp-PLACEHOLDER-`. It is recomputed independently by
+    `kow env` and the daemon and stored nowhere, so flipping it would make the
+    daemon derive `kow-…` while an already-written `~/.config/kow/env` still
+    exported `avp-…`, and injection would stop silently. That flip needs its own
+    migration.
+
+Also locked here:
+
   * the deprecated `AVP_CONFDIR` env var still works, with a warning, and
     resolves the SAME salt path, so derivation is identical;
   * `KOW_CONFDIR` + `AVP_CONFDIR` set to DIFFERENT paths fails loud (never
     silently re-derives placeholders);
   * the deprecated `avp` CLI alias is still wired.
 
-2.0.0 flips the minted prefix to `kow-` (with a migration) and drops the `avp`
-CLI alias and `AVP_CONFDIR` fallback.
+2.0.0 flips derivation to `kow-` (with a migration) and drops the `avp` CLI
+alias and `AVP_CONFDIR` fallback.
 """
 
 from __future__ import annotations
@@ -26,23 +38,53 @@ import tomllib
 import pytest
 
 from kow.placeholders import (
-    PLACEHOLDER_PREFIX,
+    ACCEPTED_PREFIXES,
+    DERIVE_PREFIX,
+    LEGACY_PREFIX,
+    MINT_PREFIX,
     STORED_PLACEHOLDER_RE,
     InstallSaltError,
     _confdir_from_env,
+    derive_placeholder,
     mint_placeholder,
 )
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
-def test_minting_still_uses_avp_prefix() -> None:
-    # The on-wire contract is unchanged in 1.0.0 — the daemon matches this exact
-    # prefix, so an existing agent env file keeps injecting with zero migration.
-    assert PLACEHOLDER_PREFIX == "avp-PLACEHOLDER-"
+def test_minting_uses_the_kow_prefix() -> None:
+    assert MINT_PREFIX == "kow-PLACEHOLDER-"
     ph = mint_placeholder()
-    assert ph.startswith(PLACEHOLDER_PREFIX)
+    assert ph.startswith(MINT_PREFIX)
     assert STORED_PLACEHOLDER_RE.match(ph)
+
+
+def test_legacy_avp_placeholders_are_still_recognised() -> None:
+    """The whole point of splitting mint from recognition: an `avp-` placeholder
+    already pasted into a vault note must keep parsing after the upgrade, or
+    existing installs silently stop injecting."""
+    assert LEGACY_PREFIX == "avp-PLACEHOLDER-"
+    legacy = LEGACY_PREFIX + "a2b3c4d5e6f7g2h3j4k5m6n7p"
+    assert STORED_PLACEHOLDER_RE.match(legacy)
+    assert legacy.startswith(ACCEPTED_PREFIXES)
+
+
+def test_derivation_still_uses_the_avp_prefix() -> None:
+    """Derived placeholders are stored nowhere and recomputed on both sides, so
+    this one is NOT safe to flip without a migration. Locked deliberately."""
+    assert DERIVE_PREFIX == "avp-PLACEHOLDER-"
+    derived = derive_placeholder("SOME_SECRET", b"\x01" * 32)
+    assert derived.startswith(DERIVE_PREFIX)
+    assert STORED_PLACEHOLDER_RE.match(derived)
+
+
+def test_both_eras_satisfy_the_same_shape() -> None:
+    """Equal length matters: config_models' >=24-char and PLACEHOLDER-marker
+    invariants must hold identically whichever prefix a placeholder carries."""
+    assert len(MINT_PREFIX) == len(LEGACY_PREFIX)
+    for prefix in ACCEPTED_PREFIXES:
+        assert "PLACEHOLDER" in prefix
+        assert len(prefix + "a" * 21) >= 24
 
 
 def test_kow_confdir_takes_precedence(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -50,7 +50,7 @@ from kow.backends import (
 from kow.injectors._token_transport import transport_open
 from kow.injectors.oauth2_refresh import is_well_formed_refresh_token
 from kow.oauth_providers import PROVIDER_PRESETS
-from kow.placeholders import PLACEHOLDER_PREFIX
+from kow.placeholders import ACCEPTED_PREFIXES
 
 _UA = "kow/oauth-login"
 _DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"  # noqa: S105 — grant name, not a secret
@@ -416,7 +416,7 @@ def _looks_live(value: str) -> bool:
     """True if the secret already holds SOMETHING real — any non-empty value that isn't an kow
     placeholder. Deliberately NOT shape-gated: an opaque or non-conforming existing token must
     still block a silent overwrite (Oracle C3 / Silas L6). ``--force`` is the explicit override."""
-    return bool(value) and not value.startswith(PLACEHOLDER_PREFIX)
+    return bool(value) and not value.startswith(ACCEPTED_PREFIXES)
 
 
 def _populate_secret(backend: Any, name: str, refresh_token: str, *, force: bool) -> int:

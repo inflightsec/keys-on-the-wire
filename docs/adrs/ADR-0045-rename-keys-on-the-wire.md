@@ -5,8 +5,34 @@ date: 2026-08-06
 
 # ADR-0045: Rename agent-vault-proxy → keys-on-the-wire (CLI `avp` → `kow`)
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-09-07 — see "Amendment: minting splits from derivation")
 - **Date:** 2026-08-06
+
+## Amendment (2026-09-07): minting splits from derivation
+
+Decision 4 below said minting and derivation *both* keep `avp-PLACEHOLDER-`. That
+conflated two things with different compatibility properties, and the minting
+half is now flipped to `kow-PLACEHOLDER-`.
+
+- **Minted** placeholders (ADR-0029) are written into the vault note and read
+  back from it, so the daemon matches whatever string is stored. Changing what
+  we mint affects only NEW bindings, and existing ones keep working because
+  recognition accepts both eras. `mint_placeholder()` now emits `kow-`.
+- **Derived** placeholders (ADR-0011) are recomputed independently by `kow env`
+  and the daemon and stored nowhere. Flipping that prefix would make the daemon
+  derive `kow-…` while an already-written `~/.config/kow/env` still exported
+  `avp-…`, and injection would stop silently. Unchanged; it still needs the
+  2.0.0 migration this ADR describes.
+
+The constants are now explicit about which is which: `MINT_PREFIX`,
+`DERIVE_PREFIX`, `LEGACY_PREFIX`, and `ACCEPTED_PREFIXES` in
+`src/kow/placeholders.py`. Anything asking "is this a placeholder?" must use
+`ACCEPTED_PREFIXES` or `STORED_PLACEHOLDER_RE`, never a single prefix, or a
+legacy placeholder gets mistaken for a live credential.
+
+One correction to the original text: decision 4 claimed `STORED_PLACEHOLDER_RE`
+already "accepts the forward `kow-PLACEHOLDER-` prefix on read". It did not —
+the regex was built from the single `avp-` constant. It does now.
 
 ## Context
 
