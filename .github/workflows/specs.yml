@@ -1,0 +1,108 @@
+# ADR-0054 — formal-model gate. Runs the Quint models against their
+# invariants and replays every ADR-0013 policy fixture against the model
+# (tests/test_spec_conformance.py). Scoped to the paths that can cause
+# spec/code/fixture drift so unrelated PRs don't pay the ~1 min tax.
+name: specs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'specs/**'
+      - 'tests/fixtures/policy/**'
+      - 'tests/test_spec_conformance.py'
+      - 'src/kow/policy.py'
+      - 'src/kow/addon.py'
+      - '.github/workflows/specs.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'specs/**'
+      - 'tests/fixtures/policy/**'
+      - 'tests/test_spec_conformance.py'
+      - 'src/kow/policy.py'
+      - 'src/kow/addon.py'
+      - '.github/workflows/specs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: specs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  specs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install hash-pinned dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes --only-binary :all: -r requirements-dev.lock
+          pip install --no-deps -e .
+
+      - name: Install quint (pinned)
+        # ubuntu-latest ships node; version-pinned global install, no
+        # setup-node action needed. Ignore lifecycle scripts on principle.
+        run: npm install -g --ignore-scripts @informalsystems/quint@0.32.0
+
+      - name: Typecheck models
+        run: |
+          quint typecheck specs/decide.qnt
+          quint typecheck specs/rotation.qnt
+
+      - name: Fixture conformance + invariant battery
+        env:
+          # Absence of quint must fail here, never skip-to-green.
+          KOW_REQUIRE_QUINT: '1'
+        run: pytest tests/test_spec_conformance.py -q
+
+      - name: Symbolic verification (Apalache)
+        # The C9 upgrade: exhaustive bounded model checking, not sampling.
+        # Downloads the Apalache distribution from GitHub releases on first
+        # use (cached below). Positive checks must hold; the two negative
+        # checks MUST find their counterexample — a vacuous invariant or a
+        # silently-unreachable race turns this step red.
+        run: |
+          set -euo pipefail
+          must_violate() {
+            # `! cmd` is exempt from `set -e`, so negate explicitly — and a
+            # nonzero exit alone is NOT a counterexample: crashes and typos
+            # also fail. Demand quint's own violation verdict in the output.
+            local out
+            if out=$(quint verify "$@" 2>&1); then
+              echo "::error::expected a counterexample from: $*"; exit 1
+            fi
+            if ! grep -q "counterexample" <<< "$out"; then
+              echo "::error::quint failed without a counterexample: $*"
+              echo "$out"; exit 1
+            fi
+          }
+          quint verify --main=decideSpec     --invariant=allGates       --max-steps=6  specs/decide.qnt
+          quint verify --main=snapshotFixed  --invariant=servedCoherent --max-steps=10 specs/decide.qnt
+          must_violate --main=snapshotCurrent --invariant=servedCoherent --max-steps=8 specs/decide.qnt
+          # Depth 15 > the 13-step contested-CAS trace: the strict protocol
+          # is checked THROUGH the conflict region, not short of it.
+          quint verify --main=rotationStrict --invariant=allSafe --max-steps=15 specs/rotation.qnt
+          quint verify --main=rotationStrictRevoking --invariant=allSafe --max-steps=12 specs/rotation.qnt
+          must_violate --main=rotationBuggy --invariant=noStaleServe --max-steps=15 specs/rotation.qnt

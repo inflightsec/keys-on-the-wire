@@ -130,6 +130,7 @@ asyncio_mode = "auto"
 markers = [
     "docker: end-to-end test that requires a running Docker daemon (skipped by default)",
     "attacks: adversarial exfil-regression exploit in the attack gallery (see tests/attacks/README.md)",
+    "specs: ADR-0054 Quint model conformance (skips locally without the quint CLI; CI enforces via KOW_REQUIRE_QUINT=1)",
 ]
 # Third-party deprecation noise we cannot fix: mitmproxy still calls the old
 # camelCase pyparsing API, and ldap3 (a transitive dep) imports pyasn1's

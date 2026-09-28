@@ -102,10 +102,13 @@ repos:
 
       - id: pytest
         name: pytest (unit tests must pass)
-        entry: .venv/bin/pytest -q --strict-markers --strict-config
+        entry: .venv/bin/pytest -q --strict-markers --strict-config -m "not specs"
         language: system
         pass_filenames: false
         # Only run when src/ or tests/ changed — skip on doc-only commits.
+        # `-m "not specs"`: the ADR-0054 Quint conformance battery shells out
+        # to the quint CLI (~30s) — CI's specs.yml is its enforcement gate,
+        # commits stay fast. Run locally with: pytest -m specs
         files: '\.(py)$'
         types: [python]
 
@@ -199,6 +202,18 @@ repos:
         # Only run on src/ Python changes — keeps doc-only commits fast.
         # CI runs this too as the authoritative gate.
         files: '^src/.*\.py$|^scripts/precommit-semgrep\.sh$'
+
+      - id: quint-specs
+        name: Quint spec typecheck (ADR-0054 models)
+        entry: bash scripts/precommit-quint.sh
+        language: system
+        pass_filenames: false
+        # Parse + typecheck only (~2s, no JVM) so a syntax error in a model
+        # never lands. The full battery — fixture conformance, gate
+        # invariants, rotation safety — is tests/test_spec_conformance.py
+        # (runs with the pytest hook when the quint CLI is present, and
+        # unconditionally in CI's specs job via KOW_REQUIRE_QUINT=1).
+        files: '^(specs/.*\.qnt|scripts/precommit-quint\.sh)$'
 
       - id: pinact
         name: pinact (--check SHA-pinning of action refs)
