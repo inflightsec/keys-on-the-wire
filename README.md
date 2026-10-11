@@ -106,7 +106,7 @@ The desktop walkthrough up top is the fast path. If you'd rather watch it defend
 
 **Understand**: [Concepts](docs/concepts.md) for placeholder, binding, CA and fail-closed in plain terms · [Architecture](docs/architecture.md) for the threat model, the G1 to G9 invariants and residual risks.
 
-**Install and operate**: [Linux](docs/install-systemd.md) · [Docker](docs/docker.md) · [macOS](https://github.com/inflightsec/homebrew-keys-on-the-wire) · [Usage](docs/usage.md) · [Single process](docs/single-process.md) · [Linux isolation](docs/linux-isolation.md) · [macOS isolation](docs/macos-isolation.md) · [Google Secret Manager](docs/gcp-secret-manager.md)
+**Install and operate**: [Linux](docs/install-systemd.md) · [Docker](docs/docker.md) · [macOS](https://github.com/inflightsec/homebrew-keys-on-the-wire) · [Usage](docs/usage.md) · [Single process](docs/single-process.md) · [Linux isolation](docs/linux-isolation.md) · [macOS isolation](docs/macos-isolation.md) · [Google Secret Manager](docs/gcp-secret-manager.md) · [Google service accounts](docs/gcp-service-account.md) · [Troubleshooting](docs/troubleshooting.md)
 
 **Reference**: [bindings.example.yaml](bindings.example.yaml) is the full config schema · [Adapter architecture](docs/adapter-architecture.md) for vault backends and how to add one · [Comparison](docs/comparison.md) versus Vault Agent, Doppler, `op run` and others · [CHANGELOG](./CHANGELOG.md) · [SECURITY](./SECURITY.md) · [CONTRIBUTING](./CONTRIBUTING.md) · [CREDITS](./CREDITS.md)
 

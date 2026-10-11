@@ -1,6 +1,6 @@
 [project]
 name = "keys-on-the-wire"
-version = "1.1.1"
+version = "1.2.0"
 description = "Loopback HTTPS proxy that fetches API credentials from Bitwarden Secrets Manager just-in-time and injects them into outbound requests, so the calling process never holds the real credential bytes in its address space."
 readme = "README.md"
 requires-python = ">=3.12"

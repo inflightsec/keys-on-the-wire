@@ -316,6 +316,12 @@ jobs:
         #   GHSA-8423-8fgw-73vq  tornado multipart memory amplification, CVSS 4.0.
         #   GHSA-wwv5-g3v4-889x  tornado set_cookie kwargs attribute injection,
         #                        CVSS 4.0; AVP calls no tornado set_cookie.
+        #   GHSA-c2m8-h5v5-343r  tornado StaticFileHandler symlink traversal,
+        #                        CVSS 8.2; kow starts no tornado server.
+        #   GHSA-chx6-46f5-w4vp  tornado curl-client decompression bomb, CVSS 7.5;
+        #                        kow never uses tornado's HTTP client.
+        #   GHSA-3hv7-mjh2-fv65  tornado query-string arg-count DoS, CVSS 5.3;
+        #                        kow serves no tornado endpoint.
         #   GHSA-6v7p-g79w-8964  msgpack OOB read; AVP unpacks no untrusted msgpack.
         #   PYSEC-2026-3552/3/4  cryptography X.509-verify + PKCS#7-decrypt CVEs;
         #                        N/A, AVP only loads a PEM key + signs RS256/ES256
@@ -339,6 +345,9 @@ jobs:
           --ignore-vuln GHSA-mpf4-983q-p7j4
           --ignore-vuln GHSA-8423-8fgw-73vq
           --ignore-vuln GHSA-wwv5-g3v4-889x
+          --ignore-vuln GHSA-c2m8-h5v5-343r
+          --ignore-vuln GHSA-chx6-46f5-w4vp
+          --ignore-vuln GHSA-3hv7-mjh2-fv65
           --ignore-vuln GHSA-6v7p-g79w-8964
           --ignore-vuln PYSEC-2026-3552
           --ignore-vuln PYSEC-2026-3553
@@ -362,6 +371,9 @@ jobs:
           --ignore-vuln GHSA-mpf4-983q-p7j4
           --ignore-vuln GHSA-8423-8fgw-73vq
           --ignore-vuln GHSA-wwv5-g3v4-889x
+          --ignore-vuln GHSA-c2m8-h5v5-343r
+          --ignore-vuln GHSA-chx6-46f5-w4vp
+          --ignore-vuln GHSA-3hv7-mjh2-fv65
           --ignore-vuln GHSA-6v7p-g79w-8964
           --ignore-vuln PYSEC-2026-3552
           --ignore-vuln PYSEC-2026-3553

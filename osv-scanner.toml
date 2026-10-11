@@ -17,8 +17,9 @@
 # wheel only declares mitmproxy>=11.0 an end user's pip picks 6.5.5 anyway. It
 # would have greened the scanners without making one install safer.
 #
-# Drop all seven when a mitmproxy release allows tornado>=6.5.6 and a regen
-# pulls it.
+# Drop all TEN when a mitmproxy release allows tornado>=6.5.9 and a regen
+# pulls it. (Was seven; three more landed 2026-10 — the treadmill turns
+# monthly while the cap stands. Checked 2026-10-11: 12.2.3 is still latest.)
 
 [[IgnoredVulns]]
 id = "GHSA-cx3h-4qpv-8hc9"
@@ -49,6 +50,18 @@ reason = "tornado urlencoded parse_qs event-loop stall, CVSS 7.5 availability-on
 [[IgnoredVulns]]
 id = "GHSA-8423-8fgw-73vq"
 reason = "tornado multipart split() memory-amplification DoS, CVSS 4.0; transitive via mitmproxy, not on AVP's request path; fix (6.5.8) blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-c2m8-h5v5-343r"
+reason = "tornado StaticFileHandler symlink path traversal, CVSS 8.2; needs a tornado static-file server, kow starts none (no tornado import in src/); fix (6.5.9) blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-chx6-46f5-w4vp"
+reason = "tornado CurlAsyncHTTPClient decompression bomb, CVSS 7.5; kow's egress is its own pinned stdlib transport, never tornado's curl client; fix (6.5.9) blocked by mitmproxy's tornado<=6.5.5 pin"
+
+[[IgnoredVulns]]
+id = "GHSA-3hv7-mjh2-fv65"
+reason = "tornado unbounded query-string arg count DoS, CVSS 5.3; needs a tornado-served endpoint, kow serves none; fix (6.5.9) blocked by mitmproxy's tornado<=6.5.5 pin"
 
 [[IgnoredVulns]]
 id = "GHSA-wwv5-g3v4-889x"
