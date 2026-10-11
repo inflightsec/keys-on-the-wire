@@ -482,3 +482,21 @@ backend:
     flow = _make_request("api.anthropic.com", {"x-api-key": victim_derived})
     addon.requestheaders(flow)
     assert flow.request.headers["x-api-key"] == real
+
+
+def test_note_header_name_must_be_an_http_token():
+    """Oracle review 2026-10-11: the category guard permits ':' and ' ' in the
+    note-settable header NAME; RFC 7230 token grammar does not. Fail-closed
+    per-secret, since a colon relocates the name/value split upstream."""
+    for bad in ("X-Api-Key: sneaky", "X Api Key", "Authéorization"):
+        note = f'# avp-binding\nhost: api.example.com\nheader: {bad}\nformat: "Bearer {{secret}}"\n'
+        assert isinstance(_parse(note), InvalidBinding), bad
+
+
+def test_note_header_name_token_chars_still_pass():
+    """Control: every character class RFC 7230 permits stays accepted."""
+    note = (
+        '# avp-binding\nhost: api.example.com\nheader: X-Api_Key.v2~ok\nformat: "Bearer {secret}"\n'
+    )
+    result = _parse(note)
+    assert isinstance(result, ParsedBinding)

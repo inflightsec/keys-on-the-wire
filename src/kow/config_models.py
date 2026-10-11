@@ -9,11 +9,16 @@ from pydantic import (
     ConfigDict,
     Field,
     HttpUrl,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
 
+from kow._textguard import assert_no_forbidden_chars
 from kow.oauth_providers import PROVIDER_PRESETS, ProviderName
+
+# RFC 7230 §3.2.6 token — the only characters legal in an HTTP field name.
+_HTTP_TOKEN_RE = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
 
 def _reject_url_credentials(url: object, field: str) -> None:
@@ -49,6 +54,7 @@ _INJECTOR_TYPES: dict[str, str] = {
     "oauth2_client_credentials": "P2",
     "jwt_bearer": "P2",
     "hmac": "P4",
+    "gcp_service_account": "P5",
 }
 
 
@@ -208,6 +214,34 @@ class HeaderInjector(BaseModel):
     header: str
     format: str | None = None
     template: str | None = None
+
+    @field_validator("header", "format", "template")
+    @classmethod
+    def reject_control_characters(cls, v: str | None, info: ValidationInfo) -> str | None:
+        """``header`` and ``format`` are settable from vault notes by a
+        lower-trust author (ADR-0024), and both become HTTP header bytes. A
+        break character here splits the field — or, in the flat-YAML note
+        grammar, injects a second key. ``kow mcp`` refuses this class when
+        writing a note; refuse it here too, where notes written by any other
+        vault client arrive. Raising ValueError keeps a poisoned note
+        per-secret fail-closed (notes_binding catches ValidationError and
+        yields InvalidBinding) rather than failing the whole config.
+        """
+        if v is not None:
+            assert_no_forbidden_chars(v, label=f"inject.{info.field_name}")
+        # The category guard above refuses break characters everywhere, but
+        # ':' and ' ' are ordinary punctuation to it. For the header NAME
+        # specifically, enforce RFC 7230 token grammar: a colon in the name
+        # relocates everything after it into the VALUE on the receiving end,
+        # and a space makes the field unparseable. No new authority is at
+        # stake — the note author chooses the name freely — this is shape
+        # correctness, fail-closed per-secret. (Oracle review, 2026-10-11.)
+        if v is not None and info.field_name == "header" and not _HTTP_TOKEN_RE.match(v):
+            raise ValueError(
+                f"inject.header {v!r} is not a valid HTTP field name "
+                "(RFC 7230 token: letters, digits, and !#$%&'*+-.^_`|~)"
+            )
+        return v
 
     def render_value(self, *, real_secret: str, secret_name: str) -> str:
         """Substituted header value for a single-secret binding. Composite
@@ -680,6 +714,149 @@ class GithubAppInjector(BaseModel):
         return self
 
 
+class GcpServiceAccountInjector(BaseModel):
+    """Google service-account authority, brokered (ADR-0050).
+
+    Three modes, one type:
+
+    - ``self_signed_jwt`` — sign an RS256 JWT with the vault-held service-account
+      key and present it directly as the bearer credential. No network call. Works
+      only for the Google APIs that accept a self-signed assertion.
+    - ``jwt_bearer_grant`` — sign the same assertion and exchange it at Google's
+      token endpoint (RFC 7523 §2.1) for an access token. Covers the whole API
+      surface. Requires an exported key, which Google's own guidance discourages.
+    - ``impersonate`` (**default**) — mint a token for ``service_account_email``
+      via IAM Credentials ``generateAccessToken``. No service-account key is
+      created or stored for the target at all. The *source* identity is either
+      the daemon's Application Default Credentials (``source: adc``) or a
+      vault-held impersonation-seat key (``source: seat_key``), per ADR-0050
+      decision 4.
+
+    The agent never holds the key or the minted token: it presents the binding's
+    placeholder and kow substitutes on egress, exactly as with every other
+    computed injector.
+    """
+
+    model_config = _STRICT_MODEL
+
+    type: Literal["gcp_service_account"] = "gcp_service_account"
+    mode: Literal["self_signed_jwt", "jwt_bearer_grant", "impersonate"] = "impersonate"
+    service_account_email: str
+    # Required for self_signed_jwt / jwt_bearer_grant, and for impersonate when
+    # source is ``seat_key``. Never set for impersonate + adc.
+    private_key_secret: str | None = None
+    # impersonate only: where the *calling* identity comes from.
+    source: Literal["adc", "seat_key"] = "adc"
+    # The seat's own email — required when source is ``seat_key`` so the
+    # assertion it signs identifies the seat, not the target.
+    source_service_account_email: str | None = None
+    # Space-delimited OAuth scopes. Required for jwt_bearer_grant + impersonate;
+    # optional for self_signed_jwt (where Google accepts a scope claim).
+    scopes: str | None = None
+    # self_signed_jwt only: the `aud` claim (the service endpoint).
+    audience: str | None = None
+    # Domain-wide delegation. Lets one binding act as an arbitrary user in a
+    # Workspace domain, so it is gated behind an explicit opt-in (ADR-0050).
+    subject: str | None = None
+    allow_domain_wide_delegation: bool = False
+    token_url: HttpUrl = HttpUrl("https://oauth2.googleapis.com/token")
+    iam_credentials_base_url: str = "https://iamcredentials.googleapis.com"
+    # Assertion lifetime (self-signed JWT / exchange assertion). Google caps at 1h.
+    assertion_ttl_seconds: int = Field(default=300, ge=60, le=3600)
+    # impersonate only: requested token lifetime. Google's ceiling without the
+    # extended-lifetime org policy is 3600s; kow does not offer the 12h variant.
+    lifetime_seconds: int = Field(default=3600, ge=60, le=3600)
+    header: str = "Authorization"
+    format: str = "Bearer {access_token}"
+    cache_ttl_safety_seconds: int = Field(default=60, ge=0, le=600)
+
+    def render_value(self, *, access_token: str) -> str:
+        """Substitute ``{access_token}`` — ``str.replace``, not format-language,
+        so an operator format cannot traverse attributes."""
+        return self.format.replace("{access_token}", access_token)
+
+    @field_validator("token_url")
+    @classmethod
+    def require_https_token_url(cls, v: HttpUrl) -> HttpUrl:
+        if v.scheme != "https":
+            raise ValueError("gcp_service_account.token_url must use https")
+        _reject_url_credentials(v, "gcp_service_account.token_url")
+        return v
+
+    @field_validator("iam_credentials_base_url")
+    @classmethod
+    def normalize_iam_base(cls, v: str) -> str:
+        v = v.strip().rstrip("/")
+        if not v.startswith("https://"):
+            raise ValueError("gcp_service_account.iam_credentials_base_url must use https")
+        _reject_url_credentials(v, "gcp_service_account.iam_credentials_base_url")
+        return v
+
+    @field_validator("service_account_email", "source_service_account_email")
+    @classmethod
+    def require_email_shape(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if "@" not in v or v.startswith("@") or v.endswith("@"):
+            raise ValueError("service-account fields must be an email address (name@project.iam…)")
+        return v
+
+    def _check_impersonate(self) -> None:
+        """Impersonation: the target has no key by construction, so the only
+        questions are which source identity mints and what it may ask for."""
+        if self.subject is not None:
+            raise ValueError(
+                "gcp_service_account.subject is not supported in impersonate mode "
+                "(generateAccessToken has no delegation claim); use jwt_bearer_grant"
+            )
+        if not self.scopes:
+            raise ValueError("gcp_service_account.scopes is required in impersonate mode")
+        if self.source == "seat_key":
+            if not self.private_key_secret:
+                raise ValueError("source: seat_key requires private_key_secret")
+            if not self.source_service_account_email:
+                raise ValueError("source: seat_key requires source_service_account_email")
+        elif self.private_key_secret is not None:
+            raise ValueError(
+                "private_key_secret is meaningless with source: adc — the daemon's "
+                "own credentials are used; set source: seat_key to bind a key"
+            )
+
+    def _check_key_modes(self) -> None:
+        """The two key-bearing modes: a key is mandatory, and the source fields
+        (which belong to impersonation) must be absent."""
+        if self.source != "adc" or self.source_service_account_email is not None:
+            raise ValueError("source / source_service_account_email apply only to impersonate mode")
+        if not self.private_key_secret:
+            raise ValueError(f"gcp_service_account.private_key_secret is required in {self.mode}")
+        if self.mode == "jwt_bearer_grant" and not self.scopes:
+            raise ValueError("gcp_service_account.scopes is required in jwt_bearer_grant mode")
+        if self.mode == "self_signed_jwt" and not (self.audience or self.scopes):
+            raise ValueError(
+                "gcp_service_account.self_signed_jwt requires audience (the service "
+                "endpoint) or scopes"
+            )
+
+    @model_validator(mode="after")
+    def require_mode_coherence(self) -> GcpServiceAccountInjector:
+        if "{access_token}" not in self.format:
+            raise ValueError(
+                "gcp_service_account.format must contain the '{access_token}' placeholder"
+            )
+        if self.subject is not None and not self.allow_domain_wide_delegation:
+            raise ValueError(
+                "gcp_service_account.subject performs domain-wide delegation (act as any "
+                "user in the Workspace domain); set allow_domain_wide_delegation: true to "
+                "confirm that is intended"
+            )
+        if self.mode == "impersonate":
+            self._check_impersonate()
+        else:
+            self._check_key_modes()
+        return self
+
+
 # Leaf injectors permitted inside MultiInjector. Nested multi is rejected
 # at config-load. ``oauth2_refresh`` and ``sigv4`` are NOT permitted children —
 # their computed resolution steps (which child triggers, sibling sharing, audit
@@ -749,7 +926,8 @@ InjectorSpec = Annotated[
     | HmacInjector
     | JwtBearerInjector
     | Oauth2ClientCredentialsInjector
-    | GithubAppInjector,
+    | GithubAppInjector
+    | GcpServiceAccountInjector,
     Field(discriminator="type"),
 ]
 
@@ -765,6 +943,7 @@ def iter_leaf_injectors(
     | JwtBearerInjector
     | Oauth2ClientCredentialsInjector
     | GithubAppInjector
+    | GcpServiceAccountInjector
 ]:
     """Flatten ``spec`` to its ordered leaf injectors. Single-leaf bindings
     yield ``[spec]``; multi yields ``spec.injectors``. ``oauth2_refresh``

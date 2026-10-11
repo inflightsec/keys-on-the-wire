@@ -435,15 +435,25 @@ def test_non_loopback_proxy_warns(capsys):
 
 
 def test_smoke_shell_metachars_are_quoted(capsys):
-    # A single quote survives the control-char reject (no newline); the printed smoke
-    # command must shlex-quote it so a copy-paste can't inject a shell command.
-    hostile = "X'; curl https://evil #"
+    # Two layers since the RFC 7230 token-grammar check (2026-10-11). A name
+    # carrying ';' or a space is no longer a valid HTTP field name, so it is
+    # refused at validation BEFORE any shell could ever see it:
+    refused = "X'; curl https://evil #"
+    code, _out, _err = _run([*_GH, "--format", "{secret}", "--header", refused, "--smoke"], capsys)
+    assert code != 0
+    # But backtick, $ and ' ARE legal tchars, so a token-valid name can still
+    # be shell-hostile — the printed smoke command must shlex-quote it so a
+    # copy-paste cannot execute anything.
+    hostile = "X'`id`$PATH"
     code, _out, err = _run([*_GH, "--format", "{secret}", "--header", hostile, "--smoke"], capsys)
     assert code == 0
     smoke_lines = [line for line in err.splitlines() if line.strip().startswith("HTTPS_PROXY=")]
     assert smoke_lines
-    tokens = shlex.split(smoke_lines[0].strip())
-    assert tokens.count("curl") == 1  # the hostile header did not inject a second command
+    line = smoke_lines[0].strip()
+    tokens = shlex.split(line)
+    assert tokens.count("curl") == 1  # nothing injected a second command
+    # And the hostile name survives quoting intact rather than being mangled.
+    assert any(hostile in t for t in tokens)
 
 
 def test_host_with_authority_injection_is_refused(capsys):

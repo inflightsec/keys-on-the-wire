@@ -42,6 +42,7 @@ _EMIT_SITE_MODULES = [
     _SRC / "_fail_closed.py",
     _SRC / "injectors" / "oauth2_refresh.py",
     _SRC / "injectors" / "body.py",
+    _SRC / "sshagent" / "server.py",
 ]
 
 _TYPE_LITERAL = re.compile(r'"type":\s*"([a-z_]+)"')
@@ -107,6 +108,37 @@ ALLOWED_TOP_LEVEL_FIELDS: dict[str, frozenset[str]] = {
     # ADR-0032: background notes-refresh changed the bound set. Secret NAMES
     # added/removed only — never values.
     "notes_refreshed": frozenset({"type", "added", "removed"}),
+    # ADR-0053: ssh-agent oracle events. Keys are named by SHA256 fingerprint
+    # only — never a key blob, never signed data, never a signature.
+    "ssh_session_bound": frozenset(
+        {"type", "request_id", "peer_uid", "host_key_fpr", "forwarding"}
+    ),
+    "ssh_sign_allowed": frozenset(
+        {
+            "type",
+            "request_id",
+            "peer_uid",
+            "key_fpr",
+            "binding_name",
+            "reason",
+            "user",
+            "dest_host_key_fpr",
+            "session_bound",
+        }
+    ),
+    "ssh_sign_denied": frozenset(
+        {
+            "type",
+            "request_id",
+            "peer_uid",
+            "key_fpr",
+            "binding_name",
+            "reason",
+            "user",
+            "dest_host_key_fpr",
+            "session_bound",
+        }
+    ),
 }
 ALLOWED_DESTINATION_KEYS = frozenset(
     {"host", "port", "path_prefix", "connect_host", "request_host"}
@@ -230,6 +262,37 @@ def test_representative_records_stay_within_field_allowlist() -> None:
             "type": "notes_refreshed",
             "added": ["NEW_SECRET"],
             "removed": [],
+        },
+        # ADR-0053: maximal ssh oracle records — fingerprints, names, and
+        # verdict metadata only.
+        "ssh_session_bound": {
+            "type": "ssh_session_bound",
+            "request_id": "r",
+            "peer_uid": 1000,
+            "host_key_fpr": "SHA256:abc",
+            "forwarding": False,
+        },
+        "ssh_sign_allowed": {
+            "type": "ssh_sign_allowed",
+            "request_id": "r",
+            "peer_uid": 1000,
+            "key_fpr": "SHA256:abc",
+            "binding_name": "MAINFRAME",
+            "reason": "sign_allowed",
+            "user": "ansible",
+            "dest_host_key_fpr": "SHA256:def",
+            "session_bound": True,
+        },
+        "ssh_sign_denied": {
+            "type": "ssh_sign_denied",
+            "request_id": "r",
+            "peer_uid": 1000,
+            "key_fpr": "SHA256:abc",
+            "binding_name": "MAINFRAME",
+            "reason": "host_key_not_pinned",
+            "user": "ansible",
+            "dest_host_key_fpr": None,
+            "session_bound": False,
         },
     }
     assert set(corpus) == set(AUDIT_EVENT_TYPES), "representative corpus must cover every type"

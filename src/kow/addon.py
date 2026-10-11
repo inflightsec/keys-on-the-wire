@@ -26,7 +26,9 @@ from kow.config import (
     Config,
     build_backend,
     load_config,
+    resolve_endpoint,
 )
+from kow.credential_endpoint import CredentialEndpoint
 from kow.denials import (
     DestinationNotBoundError,
     SigningStateUnavailableError,
@@ -38,6 +40,7 @@ from kow.handlers import (
     HeaderInjectionHandler,
     NotesActivator,
 )
+from kow.injectors.gcp_service_account import GcpServiceAccountResolver
 from kow.injectors.github_app import GithubAppResolver
 from kow.injectors.hmac_signer import HmacResolver
 from kow.injectors.jwt_bearer import JwtResolver
@@ -52,6 +55,7 @@ from kow.policy import (
     decide,
     destination_in_any_binding,
 )
+from kow.sshagent.server import SshAgentServer
 
 _log = logging.getLogger("kow.addon")
 
@@ -154,6 +158,7 @@ class AgentVaultProxyAddon:
             oauth_resolver=OauthResolver(),
             oauth_cc_resolver=Oauth2CcResolver(),
             github_app_resolver=GithubAppResolver(),
+            gcp_sa_resolver=GcpServiceAccountResolver(),
         )
         self._body_handler = BodyInjectionHandler(composite=self._composite)
         # ADR-0027/0028: the computed signing injectors resolve in the `request`
@@ -172,6 +177,12 @@ class AgentVaultProxyAddon:
         # and the background refresh task handle.
         self._config_path: Path | None = None
         self._refresh_task: asyncio.Task[None] | None = None
+        # ADR-0050: the opt-in ADC credential endpoint. Restarted on every
+        # config load so a changed placeholder or port takes effect.
+        self._credential_endpoint: CredentialEndpoint | None = None
+        # ADR-0053: the opt-in ssh-agent signing oracle. Same lifecycle as
+        # the credential endpoint: restarted on every config load.
+        self._ssh_agent: SshAgentServer | None = None
 
     def load(self, loader: Loader) -> None:
         default = str(_paths.resolve(_paths.LINUX_CONFDIR / "bindings.yaml"))
@@ -246,6 +257,47 @@ class AgentVaultProxyAddon:
         # Fresh derived-token cache on every full (re)load — stale access tokens
         # from a prior config must not outlive the binding shape that minted them.
         self._token_cache = DerivedTokenCache()
+        self._restart_credential_endpoint(snap.config)
+        self._restart_ssh_agent(snap.config, new_client, new_audit)
+
+    def _restart_ssh_agent(
+        self, config: Config, client: CachingSecretsClient, audit: AuditWriter
+    ) -> None:
+        """Bring the ssh-agent listener (ADR-0053) in line with the loaded
+        config. Always stops the old listener first — it holds the previous
+        config's bindings and caches, and a stale oracle is worse than a
+        brief connection refusal during reload."""
+        if self._ssh_agent is not None:
+            self._ssh_agent.stop()
+            self._ssh_agent = None
+        spec = config.ssh
+        if spec is None or not spec.enabled:
+            return
+        server = SshAgentServer(spec, client, audit)
+        server.start()
+        self._ssh_agent = server
+
+    def _restart_credential_endpoint(self, config: Config) -> None:
+        """Bring the ADC credential endpoint in line with the loaded config.
+        Always stops the old listener first: a stale one would keep serving the
+        previous placeholder, which the new config may no longer substitute."""
+        if self._credential_endpoint is not None:
+            self._credential_endpoint.stop()
+            self._credential_endpoint = None
+        # Re-resolve against the EFFECTIVE config: notes activation runs after
+        # Config validation and can replace the SecretSpec the endpoint was
+        # bound to, which would leave it serving a placeholder the live binding
+        # no longer recognises (Oracle review, 2026-09-11).
+        try:
+            spec = resolve_endpoint(config)
+        except ValueError:
+            _log.exception("credential endpoint could not be bound; not serving")
+            raise
+        if spec is None or not spec.enabled:
+            return
+        endpoint = CredentialEndpoint(spec)
+        endpoint.start()
+        self._credential_endpoint = endpoint
 
     def _resolve(
         self, config_path: str | Path, backend_override: object | None
@@ -356,6 +408,15 @@ class AgentVaultProxyAddon:
         if audit is not None:
             audit.set_honeytoken_names(_honeytoken_names(snap.config))
         self.config = snap.config
+        # The refreshed snapshot can carry a different placeholder or a replaced
+        # SecretSpec for the endpoint's binding; a listener left on the old one
+        # would hand clients a string this config no longer substitutes. A bind
+        # failure here must not take the refresh down — the bindings are already
+        # published and correct (Oracle review, 2026-09-11).
+        try:
+            self._restart_credential_endpoint(snap.config)
+        except Exception:  # noqa: BLE001
+            _log.exception("credential endpoint not restarted after notes refresh")
         new_names = frozenset(snap.config.secrets)
         if audit is not None and new_names != old_names:
             audit.emit(
@@ -441,6 +502,12 @@ class AgentVaultProxyAddon:
         if task is not None:
             task.cancel()
             self._refresh_task = None
+        if self._credential_endpoint is not None:
+            self._credential_endpoint.stop()
+            self._credential_endpoint = None
+        if self._ssh_agent is not None:
+            self._ssh_agent.stop()
+            self._ssh_agent = None
 
     def tls_clienthello(self, data: tls.ClientHelloData) -> None:
         """ADR-0026: scope TLS termination to bound hosts.
@@ -484,7 +551,10 @@ class AgentVaultProxyAddon:
         config, _client, audit, _companion_headers = self._capture_state()
         if config is None or audit is None:
             return
-        target_host = flow.request.pretty_host
+        # The address mitmproxy will dial, never the client-supplied authority:
+        # pretty_host prefers the Host/:authority header, which a lower-trust
+        # client controls independently of where the connection actually goes.
+        target_host = flow.request.host
         if destination_in_any_binding(config, target_host):
             flow.metadata["avp_request_id"] = str(uuid.uuid4())
             flow.metadata["avp_connect_host"] = target_host
@@ -543,8 +613,21 @@ class AgentVaultProxyAddon:
         request_id = flow.metadata.get("avp_request_id") or str(uuid.uuid4())
         flow.metadata["avp_request_id"] = request_id
 
-        target_host = flow.request.pretty_host
-        connect_host = flow.metadata.get("avp_connect_host")
+        # Authorize on the address mitmproxy dials, not the authority the client
+        # claims (pretty_host prefers the Host/:authority header). target_host
+        # threads down to every injector, so this is the single decision input
+        # for the header, body and signing paths alike.
+        target_host = flow.request.host
+        # G3 SNI/Host consistency: compare the claimed authority against that
+        # dialed address. In transparent mode request.host IS the
+        # CONNECT-established server address, so this reaches the tunnelled
+        # requests that flow.metadata never crosses the CONNECT boundary for.
+        claimed_host = flow.request.host_header
+        if claimed_host is not None:
+            claimed_host = claimed_host.split(":", 1)[0].rstrip(".").lower()
+        connect_host = flow.metadata.get("avp_connect_host") or (
+            claimed_host if claimed_host and claimed_host != target_host.lower() else None
+        )
         method = flow.request.method.upper()
         raw_path, _, query = flow.request.path.partition("?")
         # Git smart-HTTP push/clone carries its write intent in the

@@ -22,8 +22,11 @@ PINNED: list[tuple[type[d.DenialError], bytes]] = [
     (d.CompositeUnavailableError, b"kow: composite secret unavailable\n"),
     (d.DestinationNotBoundError, b"kow: destination not in any binding\n"),
     (d.ExchangeFailedError, b"kow: request denied\n"),
+    (d.GcpKeyUnavailableError, b"kow: gcp service-account key unavailable\n"),
+    (d.GcpMintFailedError, b"kow: gcp service-account token mint failed\n"),
     (d.GithubAppExchangeFailedError, b"kow: github app token exchange failed\n"),
     (d.GithubAppKeyUnavailableError, b"kow: github app private key unavailable\n"),
+    (d.HeaderControlCharactersError, b"kow: header value contains control characters\n"),
     (d.OauthCcExchangeFailedError, b"kow: oauth2 client-credentials exchange failed\n"),
     (d.OauthCcSecretUnavailableError, b"kow: oauth2 client-credentials secret unavailable\n"),
     (d.OauthExchangeFailedError, b"kow: oauth2 token exchange failed\n"),
@@ -84,6 +87,7 @@ def test_exchange_failures_share_a_base_and_carry_the_result() -> None:
         d.OauthExchangeFailedError,
         d.OauthCcExchangeFailedError,
         d.GithubAppExchangeFailedError,
+        d.GcpMintFailedError,
     ):
         exc = cls(result="sentinel")
         assert isinstance(exc, d.ExchangeFailedError)

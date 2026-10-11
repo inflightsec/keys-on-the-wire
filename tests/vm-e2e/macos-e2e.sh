@@ -24,6 +24,7 @@ for a in "$@"; do
   case "$a" in
     --system)   MODE=system ;;
     --keychain) MODE=keychain ;;
+    --gcp)      MODE=gcp ;;
     --keep)   KEEP=1 ;;
     -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) printf 'unknown argument: %s\n' "$a" >&2; exit 2 ;;
@@ -134,6 +135,7 @@ on_exit() {
   case "$MODE" in
     user)     declare -F cleanup_user     >/dev/null && cleanup_user ;;
     keychain) declare -F cleanup_keychain >/dev/null && cleanup_keychain ;;
+    gcp)      declare -F cleanup_gcp      >/dev/null && cleanup_gcp ;;
     system)   declare -F teardown_system  >/dev/null && teardown_system ;;
   esac
   [ "$KEEP" = "1" ] || rm -rf "$RUNDIR"
@@ -194,18 +196,25 @@ PY
   sleep 2
 }
 
+# curl 7.86.0 and later treat localhost as an implicit no-proxy host, so a
+# `-x` pointed at the proxy is SILENTLY IGNORED for a 127.0.0.1 upstream and the
+# request goes direct. That turns "upstream saw the placeholder unchanged" into
+# the expected result of a test that never reached the proxy at all. macOS ships
+# curl 8.x, so every proxied request in this file passes --noproxy "" to force
+# the proxy back on (verified against curl 8.21 on 2026-09-11).
+#
 # The four assertions every leg in this suite makes, against a running proxy.
 assert_wire_chain() {
   local port="$1" audit="$2" daemon_log="${3:-}" sudo_read="${4:-}"
 
   step "healthz"
   local hz
-  hz=$(curl -s -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:$port" http://healthz.kow.invalid/healthz)
+  hz=$(curl -s --noproxy "" -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:$port" http://healthz.kow.invalid/healthz)
   [ "$hz" = "200" ] && ok "healthz.kow.invalid -> 200" || bad "healthz returned $hz"
 
   step "real substitution on the wire"
   local seen
-  seen=$(curl -s -x "http://127.0.0.1:$port" -H "Authorization: Bearer ${PLACEHOLDER}" \
+  seen=$(curl -s --noproxy "" -x "http://127.0.0.1:$port" -H "Authorization: Bearer ${PLACEHOLDER}" \
               "http://127.0.0.1:$ECHO_PORT/" | "$PY" -c 'import sys,json;print(json.load(sys.stdin)["auth"])')
   if [ "$seen" = "Bearer ${REAL_SECRET}" ]; then ok "upstream saw the REAL secret"
   elif [ "$seen" = "Bearer ${PLACEHOLDER}" ]; then bad "no substitution: upstream saw the placeholder unchanged"
@@ -216,7 +225,7 @@ assert_wire_chain() {
 
   step "deny an unbound destination"
   local code
-  code=$(curl -s -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:$port" \
+  code=$(curl -s --noproxy "" -o /dev/null -w '%{http_code}' -x "http://127.0.0.1:$port" \
               -H "Authorization: Bearer ${PLACEHOLDER}" http://198.51.100.7/)
   [ "$code" = "403" ] && ok "unbound destination -> 403" || bad "unbound destination -> $code"
 
@@ -443,20 +452,20 @@ YAML
   [ "$back" = "$tricky" ] && ok "shell-hostile value round-trips exactly" \
     || bad "quoting protocol mangled the value (${#back} bytes back, ${#tricky} written)"
 
-  step "6. \`kow secret list\` enumerates without prompting"
+  step "7. \`kow secret list\` enumerates without prompting"
   local listed
   listed=$("$venv/bin/kow" secret list --config "$KOW_CONFDIR/bindings.yaml" 2>/dev/null)
   printf '%s\n' "$listed" | grep -qx MACTEST_KEY && ok "MACTEST_KEY listed" || bad "MACTEST_KEY not listed"
   printf '%s\n' "$listed" | grep -qx MACTEST_TRICKY && ok "MACTEST_TRICKY listed" || bad "MACTEST_TRICKY not listed"
 
-  step "7. no plaintext secret anywhere under the config dir"
+  step "8. no plaintext secret anywhere under the config dir"
   if grep -rq "$REAL_SECRET" "$KOW_CONFDIR" 2>/dev/null; then
     bad "SECRET FOUND IN A CONFIG FILE"
   else
     ok "no secret bytes on disk outside the keychain"
   fi
 
-  step "8. run the proxy against the keychain backend"
+  step "9. run the proxy against the keychain backend"
   HOME="$base/state" "$venv/bin/python" -m kow \
       --listen-host 127.0.0.1 --listen-port "$port" \
       --set kow_config="$KOW_CONFDIR/bindings.yaml" >"$log" 2>&1 &
@@ -471,7 +480,7 @@ YAML
   start_echo_upstream
   assert_wire_chain "$port" "$audit" "$log" ""
 
-  step "9. a LOCKED keychain fails closed, and does not hang"
+  step "10. a LOCKED keychain fails closed, and does not hang"
   # The production failure mode: a lid-close locks the keychain under a
   # long-running LaunchAgent. `security` must return an ERROR rather than block
   # forever on an unlock prompt nobody is there to answer. Every assertion here
@@ -512,7 +521,7 @@ YAML
   run_limited 60 "$venv/bin/kow" secret list --config "$KOW_CONFDIR/bindings.yaml" \
     && ok "recovers after unlock" || bad "still failing after unlock-keychain"
 
-  step "10. removal"
+  step "11. removal"
   "$venv/bin/kow" secret remove MACTEST_TRICKY --config "$KOW_CONFDIR/bindings.yaml" >/dev/null 2>&1
   security find-generic-password -a MACTEST_TRICKY -s "$K_SERVICE" "$K_KEYCHAIN" >/dev/null 2>&1 \
     && bad "item still present after kow secret remove" || ok "kow secret remove deleted the item"
@@ -696,11 +705,272 @@ PY
   assert_wire_chain "$port" "$logd/audit.jsonl" "$logd/stderr.log" sudo
 }
 
+# ===================================================== gcp service account leg
+#
+# ADR-0050 on macOS, with the signing key in a real Keychain and no network.
+#
+# Three things this leg proves that no Linux test can:
+#   1. The Keychain backend REFUSES a multi-line value, cleanly and before it
+#      spawns anything. `security -i` would truncate at the first newline, so
+#      _reject_untransmittable stops it at the API boundary. That means the
+#      key-bearing GCP modes (jwt_bearer_grant, impersonate --source seat_key)
+#      CANNOT use the Keychain backend, and the refusal must stay loud: a
+#      silently shortened signing key is the worst outcome available here.
+#      The keyless default (impersonate --source adc) needs no key at all, which
+#      is the macOS story this constraint leaves intact.
+#   2. The credential endpoint serves on macOS loopback with the content types
+#      Google's own client libraries require.
+#   3. The full chain on the real `security(1)`: key in the Keychain -> kow
+#      mints a self-signed assertion -> the upstream receives a JWT that
+#      VERIFIES against the public key, while the caller held only a placeholder.
+#
+# `self_signed_jwt` is used deliberately: it is the one mode that mints without
+# talking to Google, so this leg needs no network and no GCP project.
+
+G_BASE=""; G_PROXY_PID=""; G_KEYCHAIN=""
+G_SERVICE=kow-e2e-gcp
+G_SA=e2e-runner@kow-e2e.iam.gserviceaccount.com
+G_PLACEHOLDER="ya29.kow-PLACEHOLDER-macose2e0123456789"
+
+cleanup_gcp() {
+  if [ -n "$G_PROXY_PID" ]; then kill "$G_PROXY_PID" 2>/dev/null; wait "$G_PROXY_PID" 2>/dev/null; fi
+  stop_echo_upstream
+  if [ -n "$G_KEYCHAIN" ] && [ "$KEEP" != "1" ]; then
+    security delete-keychain "$G_KEYCHAIN" 2>/dev/null
+    if [ -e "$G_KEYCHAIN" ]; then red "  RESIDUE LEFT: $G_KEYCHAIN"
+    else printf '  clean: throwaway keychain deleted\n'; fi
+  fi
+  [ -z "$G_BASE" ] && return
+  if [ "$KEEP" = "1" ]; then printf '\nkept: %s (logs: %s)\n' "$G_BASE" "$RUNDIR"
+  else rm -rf "$G_BASE"; fi
+}
+
+run_gcp_mode() {
+  G_BASE="$(mktemp -d "${TMPDIR:-/tmp}/kow-e2e-gcp.XXXXXX")"
+  local base="$G_BASE"
+  local venv="$base/venv" audit="$base/audit.jsonl" log="$base/proxy.log"
+  local port=14379 metaport=14381
+  export KOW_CONFDIR="$base/config"
+
+  [ "$(id -u)" -ne 0 ] || { red "the gcp leg must not run as root - a keychain belongs to a login session"; exit 2; }
+  require_free_port "$port" "kow proxy"
+  require_free_port "$metaport" "credential endpoint"
+  require_free_port "$ECHO_PORT" "test upstream"
+
+  mkdir -p "$KOW_CONFDIR" "$base/state"
+  chmod 0700 "$base" "$base/state" "$KOW_CONFDIR"
+
+  step "1. throwaway keychain (the login keychain is never touched)"
+  G_KEYCHAIN="$base/kow-e2e-gcp.keychain-db"
+  local kcpw; kcpw="e2e-$(head -c12 /dev/urandom | xxd -p)"
+  security create-keychain -p "$kcpw" "$G_KEYCHAIN" && ok "created $G_KEYCHAIN" \
+    || { bad "create-keychain failed"; return; }
+  security set-keychain-settings "$G_KEYCHAIN"
+  security unlock-keychain -p "$kcpw" "$G_KEYCHAIN" && ok "unlocked" \
+    || { bad "unlock-keychain failed"; return; }
+
+  step "2. user-local venv + install from this tree"
+  "$PY" -m venv "$venv" >/dev/null 2>&1
+  if "$venv/bin/pip" -q install "$SRC" >"$RUNDIR/pip-gcp.log" 2>&1; then
+    ok "installed into \$HOME without sudo"
+  else
+    bad "install failed"; tail -8 "$RUNDIR/pip-gcp.log"; return
+  fi
+
+  step "3. generate an RSA signing key (it never touches the config)"
+  "$venv/bin/python" - "$base" <<'PY'
+import sys, pathlib
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+base = pathlib.Path(sys.argv[1])
+key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+base.joinpath("sa-signing.pem").write_bytes(key.private_bytes(
+    serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+    serialization.NoEncryption()))
+base.joinpath("sa-public.pem").write_bytes(key.public_key().public_bytes(
+    serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+PY
+  [ -s "$base/sa-signing.pem" ] && ok "2048-bit key generated" || { bad "key generation failed"; return; }
+  chmod 0600 "$base/sa-signing.pem"
+
+  step "4. the Keychain REFUSES a multi-line value (and says why)"
+  # Pinned as a regression: this refusal is what stops `security -i` truncating
+  # a signing key at its first newline. If it ever silently succeeds, a later
+  # mint would sign with a prefix of the key and fail in a way that looks like
+  # a Google problem.
+  cat > "$base/kc-bindings.yaml" <<YAML
+version: 1
+binding_source: file
+secrets:
+  GCP_SA_KEY:
+    placeholder: "kow-PLACEHOLDER-keychain-refusal-check"
+    inject:
+      header: "Authorization"
+      format: "Bearer {GCP_SA_KEY}"
+    bindings:
+      - host: "127.0.0.1"
+backend:
+  type: keychain
+  config:
+    type: keychain
+    service: ${G_SERVICE}
+    keychain: ${G_KEYCHAIN}
+    self_check: deny
+audit:
+  path: ${audit}
+YAML
+  chmod 0600 "$base/kc-bindings.yaml"
+  local kcout
+  kcout=$("$venv/bin/kow" secret add GCP_SA_KEY --stdin \
+      --config "$base/kc-bindings.yaml" < "$base/sa-signing.pem" 2>&1)
+  if [ $? -eq 0 ]; then
+    bad "the keychain accepted a multi-line value - security -i would truncate it"
+  elif printf '%s' "$kcout" | grep -qi "single-line"; then
+    ok "refused, with the reason named (key-bearing modes need a networked backend)"
+  else
+    bad "refused, but not with the documented reason: $(printf '%s' "$kcout" | head -1)"
+  fi
+
+  local stray
+  stray=$(security find-generic-password -a GCP_SA_KEY -s "$G_SERVICE" -w "$G_KEYCHAIN" 2>/dev/null)
+  [ -z "$stray" ] && ok "nothing partial was written to the keychain" \
+    || bad "a truncated value reached the keychain"
+
+  step "5. bindings.yaml: static backend + gcp_service_account + credential endpoint"
+  cat > "$KOW_CONFDIR/bindings.yaml" <<YAML
+version: 1
+binding_source: file
+secrets:
+  GCP:
+    placeholder: "${G_PLACEHOLDER}"
+    inject:
+      type: gcp_service_account
+      mode: self_signed_jwt
+      service_account_email: ${G_SA}
+      private_key_secret: GCP_SA_KEY
+      audience: "http://127.0.0.1:${ECHO_PORT}/"
+    bindings:
+      - host: "127.0.0.1"
+        methods: [GET]
+credential_endpoint:
+  enabled: true
+  port: ${metaport}
+  binding: GCP
+  project_id: kow-e2e
+backend:
+  type: static
+  config:
+    path: ${base}/static-secrets.yaml
+audit:
+  path: ${audit}
+YAML
+  chmod 0600 "$KOW_CONFDIR/bindings.yaml"
+  ok "bindings.yaml written (static backend: the Keychain cannot hold a PEM)"
+
+  step "6. the signing key goes into the static backend, mode 0600"
+  "$venv/bin/python" - "$base" <<'PY'
+import pathlib, sys
+base = pathlib.Path(sys.argv[1])
+pem = base.joinpath("sa-signing.pem").read_text()
+indented = "".join("    " + line for line in pem.splitlines(keepends=True))
+base.joinpath("static-secrets.yaml").write_text("secrets:\n  GCP_SA_KEY: |\n" + indented)
+PY
+  chmod 0600 "$base/static-secrets.yaml"
+  [ -s "$base/static-secrets.yaml" ] && ok "static secrets file written" \
+    || { bad "could not write the static secrets file"; return; }
+
+  step "7. start the daemon"
+  start_echo_upstream
+  "$venv/bin/kow" --set kow_config="$KOW_CONFDIR/bindings.yaml" --mode "regular@${port}" \
+    >"$log" 2>&1 &
+  G_PROXY_PID=$!
+  sleep 8
+  kill -0 "$G_PROXY_PID" 2>/dev/null && ok "daemon running (pid $G_PROXY_PID)" \
+    || { bad "daemon exited"; tail -12 "$log"; return; }
+
+  step "8. the credential endpoint answers ADC the way Google's libraries need"
+  local tok ctype
+  tok=$(curl -s -H "Metadata-Flavor: Google" \
+    "http://127.0.0.1:${metaport}/computeMetadata/v1/instance/service-accounts/default/token")
+  ctype=$(curl -s -o /dev/null -w '%{content_type}' -H "Metadata-Flavor: Google" \
+    "http://127.0.0.1:${metaport}/computeMetadata/v1/instance/service-accounts/default/token")
+  printf '%s' "$tok" | grep -q "$G_PLACEHOLDER" \
+    && ok "token endpoint serves the PLACEHOLDER, not a credential" \
+    || bad "token endpoint did not serve the placeholder"
+  case "$ctype" in application/json*) ok "labelled application/json (google-auth requires it)" ;;
+    *) bad "token response content-type was '$ctype', not application/json" ;; esac
+  curl -s -H "Metadata-Flavor: Google" \
+    "http://127.0.0.1:${metaport}/computeMetadata/v1/instance/service-accounts/default/?recursive=true" \
+    | grep -q "$G_SA" && ok "recursive ADC document names the service account" \
+    || bad "recursive ADC document missing or wrong"
+  local nohdr
+  nohdr=$(curl -s -o /dev/null -w '%{http_code}' \
+    "http://127.0.0.1:${metaport}/computeMetadata/v1/instance/service-accounts/default/token")
+  [ "$nohdr" = "403" ] && ok "refuses a request without Metadata-Flavor" \
+    || bad "answered without the flavor header (got $nohdr)"
+
+  step "9. the wire: the upstream receives a VERIFIABLE assertion, not the placeholder"
+  local seen
+  seen=$(curl -s --noproxy "" -x "http://127.0.0.1:$port" -H "Authorization: Bearer ${G_PLACEHOLDER}" \
+      "http://127.0.0.1:$ECHO_PORT/" | "$PY" -c 'import sys,json;print(json.load(sys.stdin)["auth"])')
+  case "$seen" in
+    "Bearer ${G_PLACEHOLDER}") bad "no substitution: upstream saw the placeholder unchanged"; return ;;
+    "") bad "upstream saw nothing (request did not complete)"; return ;;
+    "Bearer eyJ"*) ok "upstream saw a minted JWT" ;;
+    *) bad "upstream saw an unexpected value (${#seen} bytes, withheld)"; return ;;
+  esac
+
+  printf '%s' "${seen#Bearer }" > "$base/assertion.jwt"
+  if "$venv/bin/python" - "$base/assertion.jwt" "$base/sa-public.pem" "$G_SA" "$ECHO_PORT" <<'PY'
+import base64, json, sys, time, pathlib
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
+jwt = pathlib.Path(sys.argv[1]).read_text().strip()
+pub = serialization.load_pem_public_key(pathlib.Path(sys.argv[2]).read_bytes())
+email, echo_port = sys.argv[3], sys.argv[4]
+
+def b64(seg: str) -> bytes:
+    return base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4))
+
+h, p, sig = jwt.split(".")
+pub.verify(b64(sig), f"{h}.{p}".encode(), padding.PKCS1v15(), hashes.SHA256())
+header, claims = json.loads(b64(h)), json.loads(b64(p))
+assert header["alg"] == "RS256", header
+assert claims["iss"] == email, claims
+assert claims["sub"] == email, claims          # the self-signed form sets sub == iss
+assert claims["aud"] == f"http://127.0.0.1:{echo_port}/", claims
+assert claims["exp"] - claims["iat"] <= 3600, "assertion outlives Google's ceiling"
+assert claims["exp"] > time.time(), "assertion already expired"
+PY
+  then
+    ok "the assertion verifies against the public key, with the right claims"
+  else
+    bad "the minted assertion failed signature or claim verification"
+  fi
+
+  step "10. no key material anywhere it should not be"
+  # Match on real key BYTES (a slice of the base64 body), not on the PEM header:
+  # a header-only check would pass against a partially-written value.
+  local needle leaked=0
+  needle=$(sed -n '3p' "$base/sa-signing.pem" | cut -c1-40)
+  [ -n "$needle" ] || { bad "could not sample the key for the leak check"; return; }
+  grep -qF "$needle" "$audit" 2>/dev/null && { bad "key bytes found in the audit log"; leaked=1; }
+  grep -qF "$needle" "$log" 2>/dev/null && { bad "key bytes found in the daemon log"; leaked=1; }
+  grep -qF "$needle" "$KOW_CONFDIR/bindings.yaml" && { bad "key bytes found in bindings.yaml"; leaked=1; }
+  [ "$leaked" = "0" ] && ok "no key bytes in the audit log, the daemon log, or the config"
+
+  step "11. the audit recorded the injection"
+  grep -q '"decision": *"allowed"' "$audit" 2>/dev/null \
+    && ok "inject_decision: allowed recorded" || bad "no allowed decision in the audit log"
+}
+
 # ===================================================================== driver
 
 case "$MODE" in
   user)     run_user_mode ;;
   keychain) run_keychain_mode ;;
+  gcp)      run_gcp_mode ;;
   system)   run_system_mode ;;
 esac
 

@@ -23,6 +23,7 @@ bash tests/vm-e2e/run.sh --keep all      # leave it up: ssh -F /dev/null -p 2222
 ```bash
 bash tests/vm-e2e/macos-e2e.sh                            # unprivileged: no sudo, no residue, ~3 min
 bash tests/vm-e2e/macos-e2e.sh --keychain                 # the keychain backend, throwaway keychain, ~4 min
+bash tests/vm-e2e/macos-e2e.sh --gcp                      # ADR-0050: Keychain-held key, minted assertion, ~4 min
 bash tests/vm-e2e/macos-keyd-e2e.sh                       # the signed helper scopes the ACL to kow, ~3 min
 KOW_E2E_CONSENT=1 bash tests/vm-e2e/macos-e2e.sh --system # the documented system install, ~6 min
 bash tests/vm-e2e/macos-e2e.sh --system --keep            # leave it installed to poke at
@@ -72,6 +73,7 @@ any Mac, and on GitHub's runners.
 | brew | `guest-brew.sh` | the REAL tap formula, repointed at a locally built sdist: `brew install --build-from-source` |
 | macOS user | `macos-e2e.sh` | the no-admin path: venv + config in a scratch dir, proxy run as the caller, zero residue |
 | macOS keychain | `macos-e2e.sh --keychain` | the keychain backend on the real `security(1)`: CLI write with no value on argv, a shell-hostile value round-tripping byte-identical, prompt-free enumeration, nothing plaintext on disk, locked keychain failing closed without hanging |
+| macOS gcp | `macos-e2e.sh --gcp` | ADR-0050 end to end with no network and no GCP project: a multi-line PEM round-tripping through the `security -i` quoting protocol byte-identically (every other kow credential is one line), the credential endpoint serving the placeholder with the content types `google-auth` requires, and an upstream receiving an assertion that VERIFIES against the public key while the caller held only a placeholder |
 | macOS kow-keyd | `macos-keyd-e2e.sh` | the signed helper scopes the ACL: builds and self-signs `kow-keyd`, then asserts `security(1)` AND a Python script are both refused while the helper reads its own item, and that a rebuild keeps the same designated requirement |
 | macOS system | `macos-e2e.sh --system` | `dscl` account, Homebrew prefix, `chflags sappnd`, launchd — then full teardown |
 

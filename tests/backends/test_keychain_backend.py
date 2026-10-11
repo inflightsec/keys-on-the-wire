@@ -36,10 +36,14 @@ _FAKE = Path(__file__).parent / "_fake_security.py"
 SERVICE = "kow-test"
 
 
-@pytest.fixture
-def fake_security(tmp_path, monkeypatch):
+def _install_fake_security(tmp_path, monkeypatch):
     """Install the fake ``security`` as the module's binary and return the
-    paths the test can inspect."""
+    paths the caller can inspect.
+
+    A plain function rather than only a fixture so ADR-0051's helper tests can
+    stand up the *other* transmit path in the same test, which is the only way
+    to assert that the two differ in exactly one respect.
+    """
     binpath = tmp_path / "security"
     shutil.copy(_FAKE, binpath)
     binpath.chmod(binpath.stat().st_mode | stat.S_IXUSR)
@@ -56,6 +60,11 @@ def fake_security(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_SECURITY_STORE", str(store))
     monkeypatch.setenv("FAKE_SECURITY_ARGV_LOG", str(argv_log))
     return {"store": store, "argv_log": argv_log, "bin": wrapper}
+
+
+@pytest.fixture
+def fake_security(tmp_path, monkeypatch):
+    return _install_fake_security(tmp_path, monkeypatch)
 
 
 def build(**kw) -> KeychainBackend:
@@ -94,9 +103,10 @@ def test_config_rejects_unknown_field() -> None:
         KeychainConfig(service="kow", nonsense=1)  # type: ignore[call-arg]
 
 
-def test_config_surface_is_exactly_six_fields() -> None:
+def test_config_surface_is_exactly_seven_fields() -> None:
     """Anti-bloat: the knob list is the API. Adding one is a decision, not a
-    reflex, so it has to break this test first."""
+    reflex, so it has to break this test first. ``use_helper`` was added by
+    ADR-0051 and is the only addition since."""
     assert set(KeychainConfig.model_fields) == {
         "type",
         "service",
@@ -104,6 +114,7 @@ def test_config_surface_is_exactly_six_fields() -> None:
         "secret_prefix",
         "self_check",
         "timeout_seconds",
+        "use_helper",
     }
 
 

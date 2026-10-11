@@ -218,6 +218,25 @@ def _read_stdin_value() -> str:
     return value
 
 
+def _read_stdin_raw_value() -> str:
+    """Everything on stdin, to EOF, byte for byte.
+
+    ``--stdin`` reads ONE line and strips its terminator, which is right for an
+    API key and silently destructive for a PEM: only the ``-----BEGIN`` line
+    would be stored, the backend's read-back would confirm that truncated value,
+    and the operator would be told the write succeeded. So this is a separate
+    flag rather than a change to the existing one — ``--stdin``'s stripping is
+    load-bearing for every single-line secret already scripted against it.
+
+    Nothing is stripped here, including the trailing newline, because a PEM has
+    one and it is part of the file.
+    """
+    value = sys.stdin.read()
+    if value == "":
+        raise _die("secret value must not be empty")
+    return value
+
+
 @contextmanager
 def _backend_errors(doing: str):
     """Turn backend exceptions into a one-line CLI death.
@@ -236,20 +255,28 @@ def _backend_errors(doing: str):
         raise _die(f"{doing}: {exc}") from None
 
 
-def run_secret_add(name: str, config_path: str, from_stdin: bool) -> int:
+def run_secret_add(
+    name: str, config_path: str, from_stdin: bool, *, raw_stdin: bool = False
+) -> int:
     name = _validate_name(name)
     block = _load_backend_block(config_path)
+
+    def read_value() -> str:
+        if raw_stdin:
+            return _read_stdin_raw_value()
+        return _read_stdin_value() if from_stdin else _prompt_value()
+
     # Every check that can fail runs BEFORE the value is read, so an operator
     # never types a credential into a session that was going to die anyway.
     if block.type == "keychain":
         backend = _load_keychain_backend(config_path)
-        value = _read_stdin_value() if from_stdin else _prompt_value()
+        value = read_value()
         with _backend_errors(f"could not add {name!r}"):
             backend.update(name, value)
     else:
         path = _load_static_path(config_path)
         secrets = _read_secrets(path, for_write=True)
-        secrets[name] = _read_stdin_value() if from_stdin else _prompt_value()
+        secrets[name] = read_value()
         _write_secrets_atomic(path, secrets)
     print(f"✓ added secret {name!r}", file=sys.stderr)
     print("  next: run `kow env` to refresh ~/.config/kow/env", file=sys.stderr)
@@ -348,10 +375,19 @@ def register_secret_subparser(parent_subparsers: argparse._SubParsersAction) -> 
         description="Add NAME to the static secrets file and read <value> securely.",
     )
     add_p.add_argument("name", metavar="NAME", help="Secret name to add.")
-    add_p.add_argument(
+    add_input = add_p.add_mutually_exclusive_group()
+    add_input.add_argument(
         "--stdin",
         action="store_true",
-        help="Read <value> from stdin instead of prompting with no echo.",
+        help="Read one line of <value> from stdin instead of prompting with no echo.",
+    )
+    add_input.add_argument(
+        "--stdin-raw",
+        action="store_true",
+        help=(
+            "Read <value> from stdin to EOF, byte for byte. Use for multi-line "
+            "credentials such as a PEM key; --stdin would store only the first line."
+        ),
     )
 
     list_p = secret_sub.add_parser(
@@ -381,7 +417,14 @@ def register_secret_subparser(parent_subparsers: argparse._SubParsersAction) -> 
 
 def run_secret(args: argparse.Namespace) -> int:
     dispatch = {
-        "add": lambda: run_secret_add(args.name, args.config, args.stdin),
+        "add": lambda: run_secret_add(
+            # getattr: callers build this Namespace by hand too, and a missing
+            # optional flag should not be an AttributeError deep in dispatch.
+            args.name,
+            args.config,
+            args.stdin,
+            raw_stdin=getattr(args, "stdin_raw", False),
+        ),
         "list": lambda: run_secret_list(args.config),
         "remove": lambda: run_secret_remove(args.name, args.config),
         "rotate": lambda: run_secret_rotate(args.name, args.config),

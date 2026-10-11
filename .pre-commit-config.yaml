@@ -37,9 +37,12 @@ repos:
       - id: check-added-large-files
         args: ['--maxkb=500']
       - id: detect-private-key
-        # Trips on test_cli_doctor's obviously-fake PEM literals
-        # ("SECRET"/"DEADBEEF" bodies).
-        exclude: '^tests/test_cli_doctor\.py$'
+        # Trips on obviously-fake PEM fixtures: test_cli_doctor's
+        # ("SECRET"/"DEADBEEF" bodies), and the truncated 3-line fragments of
+        # the public jwt.io sample key used by the multi-line-secret tests
+        # (--stdin-raw / kow-keyd, ADR-0051). None is a loadable key; real-key
+        # detection for the repo is TruffleHog's job (verified-only scan).
+        exclude: '^tests/(test_cli_doctor\.py|cli/test_secret\.py|backends/test_keychain_helper\.py|vm-e2e/macos-keyd-e2e\.sh)$'
 
   # ─── Ruff: lint + format. Single source of truth, mirrors CI. ─────────
   # Pinned to the ruff in requirements-dev.lock (0.15.21) so the local
@@ -102,7 +105,12 @@ repos:
 
       - id: pytest
         name: pytest (unit tests must pass)
-        entry: .venv/bin/pytest -q --strict-markers --strict-config -m "not specs"
+        # An explicit -m REPLACES pyproject addopts' -m "not docker" (single-value
+        # option, CLI wins), so "not specs" alone silently re-enabled the docker
+        # e2e on every commit — the exact per-commit cost pre-release.sh exists
+        # to avoid. Keep BOTH exclusions in one expression. (2026-10-11, found
+        # when the e2e's token-mock broke a release commit on mainframe.)
+        entry: .venv/bin/pytest -q --strict-markers --strict-config -m "not specs and not docker"
         language: system
         pass_filenames: false
         # Only run when src/ or tests/ changed — skip on doc-only commits.

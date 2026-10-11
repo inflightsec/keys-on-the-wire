@@ -36,8 +36,16 @@
  * user. `set` reads it from stdin; `get` writes it to stdout.
  *
  * Build:  sh helper/build.sh
- * Usage:  kow-keyd get|set|delete|list --service S [--account A]
+ * Usage:  kow-keyd get|set|replace|delete|list --service S [--account A]
  *                  [--keychain PATH] [--data-protection] [--access-group G]
+ *
+ * WHAT THIS IS NOT (ADR-0051)
+ *
+ * Not an access boundary against a same-UID attacker. The ACL on an item names
+ * this binary's code identity, and anyone who can run this binary satisfies it
+ * — there is no caller authentication here and there cannot be one. Treat this
+ * as a binary-safe transport. The security boundary is the macOS user account,
+ * exactly as ADR-0046 says.
  *
  * Exit codes are the contract with the Python caller:
  *   0   ok
@@ -107,6 +115,17 @@ static int status_to_exit(OSStatus st) {
         case errSecItemNotFound:          return EXIT_NOT_FOUND;
         case errSecInteractionNotAllowed: return EXIT_INTERACTION;
         case errSecInteractionRequired:   return EXIT_INTERACTION;
+        /* errSecAuthFailed (-25293) is the SAME fact reached by a different
+         * route: macOS returns it when interaction has been disabled explicitly
+         * (which main() does), where a process with no session instead gets
+         * errSecInteractionNotAllowed (-25308). Both mean "this caller is not
+         * authorised for this item". Mapping only the second one made an
+         * ACL denial arrive at the caller as a generic exit 1, so kow reported
+         * "kow-keyd failed (exit 1)" instead of naming the legacy ACL and
+         * telling the operator to re-add the secret. Found on a real Mac by
+         * tests/vm-e2e/macos-keyd-e2e.sh step 12c; the deny-probes further up
+         * that same file had already documented the two-status behaviour. */
+        case errSecAuthFailed:            return EXIT_INTERACTION;
         case errSecMissingEntitlement:    return EXIT_MISSING_ENTITLEMENT;
         default:                          return EXIT_FAIL;
     }
@@ -154,9 +173,11 @@ static SecKeychainRef open_keychain(const struct opts *o, OSStatus *st) {
  * mechanism; an ad-hoc signature changes every build and would re-prompt
  * forever.
  *
- * NOTE: an item's ACL can only be set at creation. macOS requires user
- * interaction to change one afterwards, by design, so `set` deletes and
- * recreates rather than updating in place. */
+ * NOTE: an item's ACL can only be set at creation — macOS requires user
+ * interaction to change one afterwards, by design. That is a fact about the
+ * ACL, not about the data: `set` updates kSecValueData in place on an existing
+ * item and only creates one when it is absent, because an item this binary
+ * already owns already has the ACL below. See do_write. */
 static OSStatus make_self_only_access(SecAccessRef *out) {
     SecTrustedApplicationRef self = NULL;
     OSStatus st = SecTrustedApplicationCreateFromPath(NULL, &self);
@@ -247,7 +268,51 @@ static int do_delete(const struct opts *o, SecKeychainRef kc) {
     return rc;
 }
 
-static int do_set(const struct opts *o, SecKeychainRef kc) {
+/* Change an existing item's data, leaving its ACL alone.
+ *
+ * ADR-0051: this is what `set` does when the item is already there, and the
+ * reason is that the alternative destroys credentials. Delete-then-add opens a
+ * window in which the item does not exist, so a crash, a timeout, a failed ACL
+ * construction or a failed SecItemAdd between the two steps leaves the operator
+ * with NO value — and the caller's read-back detects that only after it is
+ * irreversible. In-place update has no such window.
+ *
+ * The ACL is not touched because it does not need to be: an item this binary
+ * already owns already has the ACL we want. An item owned by something else
+ * cannot be updated without authorisation, so this returns
+ * errSecInteractionNotAllowed and the caller is told how to migrate it —
+ * which is the honest outcome, not a silent downgrade of the item's access.
+ *
+ * Returns the raw OSStatus so do_write can tell errSecItemNotFound ("create it
+ * instead") from every other failure. An earlier version asked a boolean
+ * item_exists() first, which folded authentication, interaction, parameter and
+ * database errors all into "absent" and then tried to CREATE the item — turning
+ * a reportable failure into a spurious add. */
+static OSStatus update_in_place(const struct opts *o, SecKeychainRef kc,
+                                const unsigned char *val, size_t len) {
+    CFMutableDictionaryRef q = base_query(o, kc);
+    CFMutableDictionaryRef attrs = CFDictionaryCreateMutable(
+        NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDataRef data = CFDataCreate(NULL, val, (CFIndex)len);
+    if (!q || !attrs || !data) {
+        if (q) CFRelease(q);
+        if (attrs) CFRelease(attrs);
+        if (data) CFRelease(data);
+        return errSecAllocate;
+    }
+    CFDictionarySetValue(attrs, kSecValueData, data);
+
+    OSStatus st = SecItemUpdate(q, attrs);
+
+    CFRelease(data);
+    CFRelease(attrs);
+    CFRelease(q);
+    return st;
+}
+
+/* `replace` is 1 only for the explicit migration verb, which recreates the item
+ * so the ACL becomes ours. `set` never takes that path on its own. */
+static int do_write(const struct opts *o, SecKeychainRef kc, int replace) {
     unsigned char *val = NULL;
     size_t len = 0;
     if (read_all_stdin(&val, &len) != 0) {
@@ -255,13 +320,33 @@ static int do_set(const struct opts *o, SecKeychainRef kc) {
         return EXIT_FAIL;
     }
 
-    /* Delete-then-add rather than update: an existing item keeps its ORIGINAL
-     * ACL through SecItemUpdate, so updating an item created by security(1)
-     * would silently leave it readable by anything that can run security(1) —
-     * the exact property this binary exists to remove. Recreating guarantees
-     * the ACL is ours. The caller verifies by reading back. */
-    OSStatus ignored = errSecSuccess;
-    (void)do_delete_quiet(o, kc, &ignored);
+    if (replace) {
+        /* The deletion's status is CHECKED, not discarded. A failed delete
+         * followed by an add produces a duplicate, which makes every later
+         * first-match operation ambiguous. */
+        OSStatus dst = errSecSuccess;
+        int drc = do_delete_quiet(o, kc, &dst);
+        if (drc != 0) {
+            warn_status("delete before replace", dst);
+            memset(val, 0, len); free(val);
+            return drc;
+        }
+    } else {
+        /* Try the update FIRST and let the keychain answer the existence
+         * question. Only errSecItemNotFound means "create it"; every other
+         * status is a real failure and is reported as one. */
+        OSStatus ust = update_in_place(o, kc, val, len);
+        if (ust == errSecSuccess) {
+            memset(val, 0, len); free(val);
+            return 0;
+        }
+        if (ust != errSecItemNotFound) {
+            warn_status("update", ust);
+            memset(val, 0, len); free(val);
+            return status_to_exit(ust);
+        }
+        /* Absent. Fall through to SecItemAdd below. */
+    }
 
     CFMutableDictionaryRef q = base_query(o, kc);
     CFDataRef data = CFDataCreate(NULL, val, (CFIndex)len);
@@ -325,10 +410,23 @@ static int do_list(const struct opts *o, SecKeychainRef kc) {
         CFDictionaryRef item = CFArrayGetValueAtIndex(items, i);
         CFStringRef acct = CFDictionaryGetValue(item, kSecAttrAccount);
         if (!acct) continue;
-        char buf[512];
-        if (CFStringGetCString(acct, buf, sizeof buf, kCFStringEncodingUTF8)) {
-            printf("%s\n", buf);
+        /* Sized from the string, not a fixed 512 bytes. A name that did not fit
+         * used to be skipped SILENTLY, which made the caller's pre-write
+         * duplicate count read as zero for exactly the item it was checking —
+         * a false all-clear. Now enumeration either renders every name or
+         * fails visibly. */
+        CFIndex cap = CFStringGetMaximumSizeForEncoding(
+                          CFStringGetLength(acct), kCFStringEncodingUTF8) + 1;
+        char *buf = malloc((size_t)cap);
+        if (!buf || !CFStringGetCString(acct, buf, cap, kCFStringEncodingUTF8)) {
+            free(buf);
+            CFRelease(result);
+            fprintf(stderr, "kow-keyd: could not render an account name; refusing to "
+                            "report a partial list\n");
+            return EXIT_FAIL;
         }
+        printf("%s\n", buf);
+        free(buf);
     }
     CFRelease(result);
     return 0;
@@ -336,11 +434,16 @@ static int do_list(const struct opts *o, SecKeychainRef kc) {
 
 static void usage(void) {
     fprintf(stderr,
-        "usage: kow-keyd get|set|delete|list --service S [--account A]\n"
+        "usage: kow-keyd get|set|replace|delete|list --service S [--account A]\n"
         "                [--keychain PATH] [--data-protection] [--access-group G]\n"
         "\n"
         "  set reads the value from stdin; get writes it to stdout.\n"
-        "  The value never appears on argv.\n");
+        "  The value never appears on argv.\n"
+        "\n"
+        "  set      updates an existing item in place, creates it when absent.\n"
+        "  replace  deletes and recreates, so the new item's ACL is this binary's.\n"
+        "           Only for migrating an item written by something else; it has a\n"
+        "           window in which the credential does not exist.\n");
 }
 
 int main(int argc, char **argv) {
@@ -383,8 +486,9 @@ int main(int argc, char **argv) {
     }
 
     int rc;
-    if (!strcmp(o.verb, "get"))         rc = do_get(&o, kc);
-    else if (!strcmp(o.verb, "set"))    rc = do_set(&o, kc);
+    if (!strcmp(o.verb, "get"))          rc = do_get(&o, kc);
+    else if (!strcmp(o.verb, "set"))     rc = do_write(&o, kc, 0);
+    else if (!strcmp(o.verb, "replace")) rc = do_write(&o, kc, 1);
     else if (!strcmp(o.verb, "delete")) rc = do_delete(&o, kc);
     else if (!strcmp(o.verb, "list"))   rc = do_list(&o, kc);
     else { fprintf(stderr, "kow-keyd: unknown verb %s\n", o.verb); usage(); rc = EXIT_USAGE; }

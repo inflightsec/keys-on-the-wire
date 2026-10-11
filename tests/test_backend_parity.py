@@ -397,6 +397,43 @@ audit:
   path: /tmp/x.jsonl
 """,
     ),
+    (
+        "gcp_service_account_impersonate_minimal",
+        f"""
+version: 1
+secrets:
+  FOO:
+    placeholder: "{_FOO_PH}"
+    inject:
+      type: gcp_service_account
+      mode: impersonate
+      service_account_email: agent@proj.iam.gserviceaccount.com
+      scopes: "https://www.googleapis.com/auth/bigquery.readonly"
+    bindings:
+      - host: bigquery.googleapis.com
+audit:
+  path: /tmp/x.jsonl
+""",
+    ),
+    (
+        "gcp_service_account_key_modes",
+        f"""
+version: 1
+secrets:
+  FOO:
+    placeholder: "{_FOO_PH}"
+    inject:
+      type: gcp_service_account
+      mode: jwt_bearer_grant
+      service_account_email: agent@proj.iam.gserviceaccount.com
+      private_key_secret: FOO_SA_KEY
+      scopes: "https://www.googleapis.com/auth/bigquery.readonly"
+    bindings:
+      - host: bigquery.googleapis.com
+audit:
+  path: /tmp/x.jsonl
+""",
+    ),
 ]
 
 

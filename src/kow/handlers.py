@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from mitmproxy import http
 
 from kow._fail_closed import emit_denial_and_503
+from kow._textguard import has_forbidden_char
 from kow.audit import REASON_HOST_NOT_IN_ALLOWLIST, AuditWriter
 from kow.backends import (
     BackendCannotListError,
@@ -36,10 +37,12 @@ from kow.denials import (
     CompositeFetchFailedError,
     CompositeRenderFailedError,
     CompositeUnavailableError,
+    HeaderControlCharactersError,
     SecretFetchFailedError,
     SecretUnavailableError,
 )
 from kow.injectors.body import _build_body_replacer
+from kow.injectors.gcp_service_account import GcpServiceAccountResolver
 from kow.injectors.github_app import GithubAppResolver
 from kow.injectors.oauth2_client_credentials import Oauth2CcResolver
 from kow.injectors.oauth2_refresh import OauthResolver
@@ -209,6 +212,25 @@ class CompositeResolver:
                     return
 
 
+class _ExchangeResolver(Protocol):
+    """Structural type of the token-minting resolvers dispatched at
+    requestheaders. They share one signature by construction; this pins it so a
+    new minting injector cannot drift from the seam."""
+
+    def resolve(
+        self,
+        *,
+        flow: http.HTTPFlow,
+        decision: Decision,
+        client: CachingSecretsClient,
+        audit: AuditWriter,
+        request_id: str,
+        target_host: str,
+        companion_headers: dict[str, dict[str, str]],
+        token_cache: DerivedTokenCache,
+    ) -> None: ...
+
+
 class HeaderInjectionHandler:
     """Executes the header verdict from :func:`kow.policy.decide`."""
 
@@ -219,6 +241,7 @@ class HeaderInjectionHandler:
         oauth_resolver: OauthResolver,
         oauth_cc_resolver: Oauth2CcResolver,
         github_app_resolver: GithubAppResolver,
+        gcp_sa_resolver: GcpServiceAccountResolver,
     ) -> None:
         # ADR-0024: name -> hosts the file-side allowlist REMOVED from that
         # secret's notes binding (partial rejection — siblings stayed live).
@@ -230,6 +253,21 @@ class HeaderInjectionHandler:
         self._oauth_resolver = oauth_resolver
         self._oauth_cc_resolver = oauth_cc_resolver
         self._github_app_resolver = github_app_resolver
+        self._gcp_sa_resolver = gcp_sa_resolver
+
+    def _exchange_resolver(self, decision: Decision) -> _ExchangeResolver | None:
+        """The resolver for a token-minting verdict, or None for the inline and
+        request-hook paths. ADR-0030 accepted four copy-pasted dispatch blocks;
+        ADR-0050 would have made it five, so the branch lives here once."""
+        if decision.oauth2_injector is not None:
+            return self._oauth_resolver
+        if decision.oauth2_cc_injector is not None:
+            return self._oauth_cc_resolver
+        if decision.github_app_injector is not None:
+            return self._github_app_resolver
+        if decision.gcp_sa_injector is not None:
+            return self._gcp_sa_resolver
+        return None
 
     def execute(
         self,
@@ -272,47 +310,17 @@ class HeaderInjectionHandler:
         assert secret_spec is not None
         assert header_name is not None
 
-        # OAuth2 refresh-token grant: divert through the token-exchange
-        # branch. ADR-0017 §11 — resolution slots in between deny gates
-        # (handled above) and header injection. The resolver sets
-        # ``flow.response`` on any deny path and otherwise injects the
-        # resolved access token via the standard header mutation +
-        # audit-before-bytes-leave ordering.
-        if decision.oauth2_injector is not None:
+        # Token-minting injectors (oauth2_refresh ADR-0017, oauth2_cc +
+        # github_app ADR-0030, gcp_service_account ADR-0050) all resolve at
+        # THIS seam: resolution slots in between the deny gates (handled above)
+        # and header injection. Each resolver sets ``flow.response`` on its deny
+        # paths and otherwise injects the minted credential through the standard
+        # header mutation + audit-before-bytes-leave ordering. decide() sets
+        # exactly one handle, so the first match is the only match.
+        resolver = self._exchange_resolver(decision)
+        if resolver is not None:
             assert token_cache is not None
-            self._oauth_resolver.resolve(
-                flow=flow,
-                decision=decision,
-                client=client,
-                audit=audit,
-                request_id=request_id,
-                target_host=target_host,
-                companion_headers=companion_headers,
-                token_cache=token_cache,
-            )
-            return
-
-        # OAuth2 client-credentials (ADR-0030): same requestheaders token-exchange
-        # seam as oauth2_refresh, minus rotation.
-        if decision.oauth2_cc_injector is not None:
-            assert token_cache is not None
-            self._oauth_cc_resolver.resolve(
-                flow=flow,
-                decision=decision,
-                client=client,
-                audit=audit,
-                request_id=request_id,
-                target_host=target_host,
-                companion_headers=companion_headers,
-                token_cache=token_cache,
-            )
-            return
-
-        # GitHub App (ADR-0030): mint App JWT -> exchange for an installation
-        # token at the same requestheaders exchange seam.
-        if decision.github_app_injector is not None:
-            assert token_cache is not None
-            self._github_app_resolver.resolve(
+            resolver.resolve(
                 flow=flow,
                 decision=decision,
                 client=client,
@@ -349,6 +357,23 @@ class HeaderInjectionHandler:
         )
         if new_header_value is None:
             return  # response already set + audit emitted
+
+        # Last gate before the value becomes header bytes. The config layer
+        # already refuses control characters in `header`/`format`, so this
+        # catches what config cannot see: a SECRET VALUE that itself carries a
+        # break character (backends round-trip values verbatim). Fail closed —
+        # a split request would carry the real credential past policy scoping.
+        if has_forbidden_char(new_header_value) or has_forbidden_char(header_name):
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason="header_control_characters",
+                secret_name=secret_name,
+                message=HeaderControlCharactersError.client_message,
+                target_host=target_host,
+            )
+            return
 
         flow.request.headers[header_name] = new_header_value
         # Companion headers (e.g. anthropic-version) are DEFAULTS, not
@@ -766,6 +791,66 @@ def _preserve_file_flags(spec: SecretSpec, file_spec: SecretSpec | None) -> Secr
     return spec
 
 
+def _warn_note_shadows_file(name: str, spec: SecretSpec, file_spec: SecretSpec | None) -> None:
+    """Say so, loudly, when a note replaces a file binding for the same secret.
+
+    `binding_source: both` makes notes win, which is intended and documented.
+    What was NOT survivable is that it happened in silence: the operator writes
+    a file-source injector, forgets to delete the old note, and the note wins.
+    kow is fail-closed, so the symptom is "auth just didn't happen" with nothing
+    naming the stale note. That cost a real debugging session (Verda, 2026-09-20,
+    where a leftover Basic note shadowed an `oauth2_client_credentials` injector).
+
+    Two severities, because they are not equally alarming:
+
+    * Same injector type — the note is narrowing or re-pointing a like-for-like
+      binding. Worth naming, rarely a mistake.
+    * DIFFERENT injector type — a note can only ever express `header`, so this
+      is a richer injector (oauth2, sigv4, hmac, jwt_bearer, body, multi) being
+      silently downgraded to static header substitution. The capability the
+      operator configured is gone. This is the Verda shape.
+    """
+    if file_spec is None:
+        return
+    note_type = getattr(spec.inject, "type", "header")
+    file_type = getattr(file_spec.inject, "type", "header")
+    # Oracle review 2026-09-24: the advice that follows this warning is "delete
+    # the note". That is only safe if the file binding is at least as narrow.
+    # A note routinely narrows scope (ADR-0024 is built on it), so deleting one
+    # can silently BROADEN what the credential reaches. Name it when it would.
+    note_hosts = {b.host for b in spec.bindings}
+    file_hosts = {b.host for b in file_spec.bindings}
+    if note_hosts < file_hosts:
+        _log.warning(
+            "secret %r: the overriding note is also NARROWER than the file binding "
+            "(note hosts %s vs file hosts %s). Deleting the note would widen this "
+            "credential to the file's full host set — narrow the file binding first.",
+            name,
+            sorted(note_hosts),
+            sorted(file_hosts),
+        )
+    if note_type != file_type:
+        _log.warning(
+            "secret %r: a vault NOTE is overriding the file binding, and the two are "
+            "DIFFERENT injector types (file=%r -> note=%r). A note can only express "
+            "static header injection, so the %r injector you configured is NOT active. "
+            "If the file binding is the one you want, DELETE the note — under "
+            "binding_source: both the note always wins.",
+            name,
+            file_type,
+            note_type,
+            file_type,
+        )
+    else:
+        _log.warning(
+            "secret %r: a vault NOTE is overriding the file binding (both are %r). "
+            "Intended under binding_source: both; delete the note if the file "
+            "binding is the one you want.",
+            name,
+            file_type,
+        )
+
+
 class NotesActivator:
     """Resolves BWS-notes bindings and merges them into a fresh Config at load.
 
@@ -853,10 +938,18 @@ class NotesActivator:
             }
         else:
             merged = {}
-        for name, (spec, _source, companion) in resolved.specs.items():
+        for name, (spec, source, companion) in resolved.specs.items():
             # Notes specs replace the file spec wholesale; keep operator-only
             # file flags (honeytoken) so the tripwire can't silently disarm.
-            merged[name] = _preserve_file_flags(spec, file_specs.get(name))
+            file_spec = file_specs.get(name)
+            # In `both` mode the resolver ALSO yields the file specs (tagged
+            # "file"), so a file-only secret arrives here with itself as its
+            # own "file_spec". Only a genuinely notes-derived spec can shadow
+            # anything — warning on the rest would make this background hum
+            # and stop it being read, which a control test pins.
+            if source != "file":
+                _warn_note_shadows_file(name, spec, file_spec)
+            merged[name] = _preserve_file_flags(spec, file_spec)
             if companion:
                 out_companion_headers[name] = dict(companion)
         # Notes-derived specs bypass Config.enforce_wildcard_opt_in — that

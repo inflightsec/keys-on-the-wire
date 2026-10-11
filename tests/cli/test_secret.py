@@ -100,6 +100,56 @@ def test_add_via_stdin_reads_value(tmp_path: Path, monkeypatch) -> None:
     assert _load_secret_map(secrets_path) == {"FOO": "thevalue"}
 
 
+_PEM = (
+    "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSj\n"
+    "AgEAAoIBAQC7VJTUt9Us8cKjMzEfYyjiWA4R4/M2bS1GB4t7NXp98C3SC6dVMvDu\n"
+    "-----END PRIVATE KEY-----\n"
+)
+
+
+def test_stdin_truncates_a_pem_which_is_why_stdin_raw_exists(tmp_path: Path, monkeypatch) -> None:
+    """Pins the trap rather than only the fix. `--stdin` reads ONE line, so a
+    PEM piped into it stores `-----BEGIN PRIVATE KEY-----` and reports success —
+    a truncated signing key that fails at the far end with an unrelated error."""
+    config_path, secrets_path = _make_static_bindings(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(_PEM))
+
+    assert run_secret_add("FOO", config_path, True) == 0
+    assert _load_secret_map(secrets_path) == {"FOO": "-----BEGIN PRIVATE KEY-----"}
+
+
+def test_add_via_stdin_raw_keeps_every_line(tmp_path: Path, monkeypatch) -> None:
+    config_path, secrets_path = _make_static_bindings(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(_PEM))
+
+    assert run_secret_add("FOO", config_path, False, raw_stdin=True) == 0
+    assert _load_secret_map(secrets_path) == {"FOO": _PEM}
+
+
+def test_stdin_raw_preserves_the_trailing_newline(tmp_path: Path, monkeypatch) -> None:
+    """A PEM ends with one and it is part of the file. `--stdin` strips it, which
+    is right there and wrong here."""
+    config_path, secrets_path = _make_static_bindings(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO("value\n"))
+
+    assert run_secret_add("FOO", config_path, False, raw_stdin=True) == 0
+    assert _load_secret_map(secrets_path) == {"FOO": "value\n"}
+
+
+def test_stdin_raw_rejects_empty_input(tmp_path: Path, monkeypatch) -> None:
+    config_path, _ = _make_static_bindings(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+
+    with pytest.raises(SystemExit):
+        run_secret_add("FOO", config_path, False, raw_stdin=True)
+
+
+def test_stdin_and_stdin_raw_are_mutually_exclusive() -> None:
+    parser = _build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["secret", "add", "FOO", "--stdin", "--stdin-raw"])
+
+
 def test_add_help_text_contains_no_real_values(capsys) -> None:
     parser = _build_parser()
 
@@ -272,7 +322,7 @@ def test_run_secret_dispatches_each_verb(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "kow.cli.secret.run_secret_add",
-        lambda name, config_path, from_stdin: (
+        lambda name, config_path, from_stdin, raw_stdin=False: (
             calls.append(("add", (name, config_path, from_stdin))) or 0
         ),
     )

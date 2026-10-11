@@ -27,6 +27,7 @@ from typing import Any, Literal
 from kow.config import (
     BindingSpec,
     Config,
+    GcpServiceAccountInjector,
     GithubAppInjector,
     HeaderInjector,
     HmacInjector,
@@ -53,6 +54,7 @@ _HeaderTargetInjector = (
     | Oauth2RefreshInjector
     | Oauth2ClientCredentialsInjector
     | GithubAppInjector
+    | GcpServiceAccountInjector
     | Sigv4Injector
     | HmacInjector
     | JwtBearerInjector
@@ -96,6 +98,9 @@ class Decision:
     # requestheaders like oauth2_refresh (not the signing request-hook seam).
     oauth2_cc_injector: Oauth2ClientCredentialsInjector | None = None
     github_app_injector: GithubAppInjector | None = None
+    # ADR-0050: Google service-account minting (self-signed JWT, RFC 7523
+    # exchange, or IAM impersonation) — same requestheaders exchange seam.
+    gcp_sa_injector: GcpServiceAccountInjector | None = None
     # Computed signing injectors — the addon defers execution to the ``request``
     # hook (sigv4/hmac hash the request BODY; jwt rides the same seam). Exactly
     # one is set on an allowed verdict.
@@ -325,4 +330,6 @@ def _build_allowed_decision(
         return Decision(oauth2_cc_injector=matched_injector, **common)  # type: ignore[arg-type]
     if isinstance(matched_injector, GithubAppInjector):
         return Decision(github_app_injector=matched_injector, **common)  # type: ignore[arg-type]
+    if isinstance(matched_injector, GcpServiceAccountInjector):
+        return Decision(gcp_sa_injector=matched_injector, **common)  # type: ignore[arg-type]
     return Decision(header_injector=matched_injector, **common)  # type: ignore[arg-type]

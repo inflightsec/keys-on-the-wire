@@ -18,6 +18,7 @@ from kow.config_models import _PLACEHOLDER_MARKER as _PLACEHOLDER_MARKER
 from kow.config_models import _PLACEHOLDER_MIN_LEN as _PLACEHOLDER_MIN_LEN
 from kow.config_models import (
     _STRICT_MODEL,
+    GcpServiceAccountInjector,
     GithubAppInjector,
     HmacInjector,
     InjectorSpec,
@@ -33,6 +34,7 @@ from kow.config_models import (
 from kow.config_models import BodyInjector as BodyInjector
 from kow.config_models import HeaderInjector as HeaderInjector
 from kow.matching import host_matches_pattern, path_glob_matches
+from kow.sshagent.config import SshSpec
 from kow.template import KowTemplate, UnsupportedTemplateError
 
 _HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
@@ -332,7 +334,10 @@ class SecretSpec(BaseModel):
             return self
         # Client-credentials / github_app inject an exchanged/minted token, not
         # a vault-composed value; compose: has no meaning.
-        if isinstance(self.inject, Oauth2ClientCredentialsInjector | GithubAppInjector):
+        if isinstance(
+            self.inject,
+            Oauth2ClientCredentialsInjector | GithubAppInjector | GcpServiceAccountInjector,
+        ):
             if self.compose is not None:
                 raise ValueError(f"compose: cannot be used with inject.type: {self.inject.type}")
             return self
@@ -448,6 +453,54 @@ class BackendBlock(BaseModel):
         return self
 
 
+class CredentialEndpointSpec(BaseModel):
+    """The ADC credential endpoint (ADR-0050): a loopback listener that answers
+    the Compute Engine metadata protocol so ADC-based clients authenticate with
+    no code change.
+
+    It serves the referenced binding's PLACEHOLDER as the access token, never a
+    real credential — the injector substitutes on egress. That is what makes an
+    unauthenticated local listener acceptable; see the module docstring in
+    ``kow/credential_endpoint.py``.
+    """
+
+    model_config = _STRICT_MODEL
+
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = Field(default=14380, ge=0, le=65535)
+    # The secret whose placeholder is dispensed. Its binding is what scopes the
+    # authority the placeholder can reach.
+    binding: str
+    # Derived from the bound injector unless the operator states them; a stated
+    # value that disagrees with the binding is a config error, not an override.
+    # The endpoint advertising one identity while kow authenticates as another
+    # is precisely the confusion this refuses to allow (Oracle review).
+    service_account_email: str = ""
+    project_id: str | None = None
+    numeric_project_id: int = 0
+    scopes: str = ""
+    expires_in_seconds: int = Field(default=3600, ge=60, le=3600)
+    # Populated at Config validation from ``binding`` — never operator-set, so
+    # the endpoint and the binding cannot drift apart.
+    placeholder: str = Field(default="", exclude=True)
+
+    def scopes_list(self) -> list[str]:
+        return self.scopes.split()
+
+    @field_validator("host")
+    @classmethod
+    def require_loopback(cls, v: str) -> str:
+        """A metadata endpoint on a routable address would hand placeholders to
+        the LAN. There is no deployment where that is the intent."""
+        if v not in ("127.0.0.1", "::1", "localhost"):
+            raise ValueError(
+                "credential_endpoint.host must be loopback (127.0.0.1 / ::1); "
+                "the endpoint is reachable by every local process as it is"
+            )
+        return v
+
+
 class ConfigError(Exception):
     """Raised at config-load time for structural errors that pydantic
     can't express."""
@@ -515,6 +568,23 @@ class Config(BaseModel):
     audit: AuditSpec
     preflight: PreflightSpec = Field(default_factory=PreflightSpec)
     backend: BackendBlock | None = None
+    # ADR-0050: opt-in ADC credential endpoint. A listener is not a request, so
+    # it lives in its own top-level section rather than inside ``secrets:``.
+    credential_endpoint: CredentialEndpointSpec | None = None
+    # ADR-0053: opt-in ssh-agent signing oracle (experimental). Same
+    # listener-not-a-request reasoning as credential_endpoint; SSH bindings
+    # name backend secrets directly and never touch the ``secrets:`` map.
+    ssh: SshSpec | None = None
+
+    @model_validator(mode="after")
+    def resolve_credential_endpoint_placeholder(self) -> Config:
+        """Fail at load time if the endpoint cannot be bound. Re-run against the
+        EFFECTIVE config after notes activation (see ``resolve_endpoint``) —
+        notes can replace a SecretSpec wholesale, so validating only here would
+        leave the endpoint serving a placeholder the live binding no longer
+        recognises."""
+        resolve_endpoint(self)
+        return self
 
     @field_validator("binding_source", mode="before")
     @classmethod
@@ -604,7 +674,8 @@ class Config(BaseModel):
                     | HmacInjector
                     | JwtBearerInjector
                     | Oauth2ClientCredentialsInjector
-                    | GithubAppInjector,
+                    | GithubAppInjector
+                    | GcpServiceAccountInjector,
                 ):
                     continue
                 fmt = child.format
@@ -793,6 +864,59 @@ class Config(BaseModel):
 
 # Back-compat alias for v0.4.x importers. Removed in v0.6.0.
 InjectSpec = HeaderInjector
+
+
+def resolve_endpoint(config: Config) -> CredentialEndpointSpec | None:
+    """Bind the credential endpoint to the EFFECTIVE spec of its secret.
+
+    Called twice by design: once at config validation (so a broken setup fails at
+    load) and once by the addon after notes activation has merged vault-side
+    bindings in, because that merge can replace the SecretSpec the endpoint was
+    validated against.
+
+    Derives the placeholder, service-account email and scopes from the binding
+    itself. An endpoint advertising one identity while the injector authenticates
+    as another is not a supported configuration, it is a way to be wrong quietly.
+    """
+    from kow.config_models import GcpServiceAccountInjector
+
+    ep = config.credential_endpoint
+    if ep is None or not ep.enabled:
+        return None
+    spec = config.secrets.get(ep.binding)
+    if spec is None:
+        raise ValueError(
+            f"credential_endpoint.binding {ep.binding!r} is not a secret in this config"
+        )
+    if not isinstance(spec.inject, GcpServiceAccountInjector):
+        raise ValueError(
+            f"credential_endpoint.binding {ep.binding!r} is not a gcp_service_account "
+            "binding; the endpoint can only front a binding that mints a Google "
+            "credential for a bearer Authorization header"
+        )
+    if not spec.placeholder:
+        raise ValueError(
+            f"credential_endpoint.binding {ep.binding!r} has no literal placeholder; "
+            "the endpoint needs one to serve"
+        )
+    injector_email = spec.inject.service_account_email
+    if ep.service_account_email and ep.service_account_email != injector_email:
+        raise ValueError(
+            "credential_endpoint.service_account_email "
+            f"({ep.service_account_email!r}) disagrees with the binding's "
+            f"({injector_email!r}); the endpoint would advertise an identity kow "
+            "does not authenticate as"
+        )
+    injector_scopes = spec.inject.scopes or ""
+    if ep.scopes and injector_scopes and ep.scopes != injector_scopes:
+        raise ValueError(
+            "credential_endpoint.scopes disagrees with the binding's scopes; "
+            "clients would be told they hold access the minted token does not carry"
+        )
+    object.__setattr__(ep, "placeholder", spec.placeholder)
+    object.__setattr__(ep, "service_account_email", injector_email)
+    object.__setattr__(ep, "scopes", ep.scopes or injector_scopes)
+    return ep
 
 
 def load_config(path: str | Path) -> Config:

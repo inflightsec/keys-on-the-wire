@@ -39,6 +39,10 @@ class AmbiguousPlaceholderError(DenialError):
     client_message = b"kow: ambiguous placeholder match\n"
 
 
+class HeaderControlCharactersError(DenialError):
+    client_message = b"kow: header value contains control characters\n"
+
+
 # --- single-secret resolution ----------------------------------------------
 
 
@@ -114,6 +118,19 @@ class OauthCcExchangeFailedError(ExchangeFailedError):
 
 class GithubAppExchangeFailedError(ExchangeFailedError):
     client_message = b"kow: github app token exchange failed\n"
+
+
+class GcpMintFailedError(ExchangeFailedError):
+    """ADR-0050: any mint failure, in any of the three modes — a rejected
+    assertion, an unreachable token endpoint, a refused impersonation, or an
+    absent source identity. One wire message for all of them: the client learns
+    that kow could not mint, never which leg failed."""
+
+    client_message = b"kow: gcp service-account token mint failed\n"
+
+
+class GcpKeyUnavailableError(DenialError):
+    client_message = b"kow: gcp service-account key unavailable\n"
 
 
 class OauthInputUnavailableError(DenialError):

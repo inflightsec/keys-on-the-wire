@@ -19,7 +19,11 @@ from typing import Any
 #         never inflate inject_decision counts), carrying the reason
 #         `binding_methods_unscoped` plus a `method` field. No new field on
 #         inject_decision.
-AUDIT_CONTRACT_VERSION = 4
+#   v5 -> ADR-0053: three ssh-agent oracle events — `ssh_session_bound`,
+#         `ssh_sign_allowed`, `ssh_sign_denied`. Key material never appears;
+#         keys are named by SHA256 fingerprint only. No change to any
+#         existing event.
+AUDIT_CONTRACT_VERSION = 5
 
 # inject_decision `reason` for a secret whose BWS note carries no binding
 # (empty/missing note, or a mapping with no `host`). Distinct from
@@ -82,6 +86,15 @@ AUDIT_EVENT_TYPES: frozenset[str] = frozenset(
         # would silently inflate every operator's injection count. Carries the
         # same minimized fields (names, host, verb) and never a secret value.
         "policy_advisory",
+        # ADR-0053: the ssh-agent signing oracle. `ssh_session_bound` records
+        # a verified session-bind (destination host key fingerprint +
+        # forwarding flag); `ssh_sign_allowed` / `ssh_sign_denied` record the
+        # signing verdict, fsynced BEFORE the signature bytes reach the
+        # client socket (the G6 analogue — the signature is the injection).
+        # Fingerprints only, never key blobs or signed data.
+        "ssh_session_bound",
+        "ssh_sign_allowed",
+        "ssh_sign_denied",
     }
 )
 

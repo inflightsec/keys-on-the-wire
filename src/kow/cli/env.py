@@ -212,6 +212,11 @@ def run_env(
 
     lines, skipped = build_export_lines(names, salt, stored=stored)
 
+    # ADR-0053: when the ssh-agent oracle is configured, the projected env is
+    # also where callers pick up its socket — one file, one sourcing step.
+    if config.ssh is not None and config.ssh.enabled:
+        lines.append(f"export SSH_AUTH_SOCK='{config.ssh.socket_path}'")
+
     for name in skipped:
         print(
             f"[kow env] WARNING: skipping secret name {name!r} — not a valid shell "
