@@ -420,6 +420,31 @@ secrets:
         methods: [GET, POST]
         paths: ["/repos/**", "/installation/**"]
 
+  # ─── Google service account (inject.type: gcp_service_account) — ADR-0050 ─
+  # Three modes. `impersonate` (default) mints a token for the target service
+  # account via IAM generateAccessToken using the daemon's own identity, so NO
+  # service-account key exists anywhere — the posture Google's guidance asks
+  # for. `jwt_bearer_grant` signs an RFC 7523 assertion with a vault-held key
+  # and exchanges it; `self_signed_jwt` presents the assertion directly with no
+  # network call at all. Pair with `credential_endpoint:` below so that ADC
+  # clients (client libraries, gcloud, Terraform) find a credential without
+  # code changes. Give it a `ya29.`-shaped placeholder: some SDKs check.
+  GCP:
+    placeholder: "ya29.kow-PLACEHOLDER-ypf2d5fn4uvibadxuebtyutdpm"
+    inject:
+      type: gcp_service_account
+      mode: impersonate
+      service_account_email: agent-runner@my-project.iam.gserviceaccount.com
+      scopes: "https://www.googleapis.com/auth/bigquery.readonly"
+      # source: adc                    # default; the daemon's own credentials
+      # source: seat_key               # or a vault-held impersonation seat:
+      # source_service_account_email: kow-seat@my-project.iam.gserviceaccount.com
+      # private_key_secret: GCP_SEAT_KEY
+      # lifetime_seconds: 3600         # requested token lifetime (max 3600)
+    bindings:
+      - host: "bigquery.googleapis.com"
+        methods: [GET, POST]
+
   # ─── Honeytoken (canary) binding — ADR-0019 §5 ───────────────────────────
   # A trap credential. `honeytoken: true` makes ANY use of this placeholder
   # emit a `honeytoken_triggered` audit event (in addition to the normal
@@ -525,3 +550,39 @@ backend:
 #     # credential_config_path: /etc/kow/gcp-wif.json   # WIF instead
 #     self_check: deny                        # refuse to start under a broad identity
 #     reject_ambient_key: true                # refuse a downloaded SA key via ADC
+
+# ─── ADC credential endpoint (ADR-0050) ─────────────────────────────────────
+# A loopback listener answering the Compute Engine metadata protocol, so any
+# Application-Default-Credentials client authenticates with no code change.
+# It serves the BINDING'S PLACEHOLDER as the access token, never a real
+# credential — the injector substitutes on egress. That is what makes an
+# unauthenticated local listener acceptable; do not "fix" it to serve a token.
+# Point clients at it with GCE_METADATA_HOST (plus GCE_METADATA_IP for Python
+# and GCE_METADATA_ROOT for gcloud).
+# credential_endpoint:
+#   enabled: true
+#   host: 127.0.0.1        # loopback only; anything else is refused at load
+#   port: 14380
+#   binding: GCP           # whose placeholder to serve
+#   service_account_email: agent-runner@my-project.iam.gserviceaccount.com
+#   project_id: my-project
+#   scopes: "https://www.googleapis.com/auth/bigquery.readonly"
+#   expires_in_seconds: 3600
+
+# ─── ssh-agent signing oracle (ADR-0053, experimental) ──────────────────────
+# kow serves the SSH agent protocol (RFC 9987) on a Unix socket. Callers set
+# SSH_AUTH_SOCK to socket_path (`kow env` exports it) and never hold the key.
+# A signature is only produced for a verified session-bind@openssh.com whose
+# server host key matches this binding's pinned host_keys — the destination
+# check is cryptographic, not a hostname string.
+# ssh:
+#   socket_path: /run/kow/ssh-agent.sock
+#   allowed_uids: [1001]         # MANDATORY: SO_PEERCRED allowlist, no default
+#   bindings:
+#     MAINFRAME_ANSIBLE:
+#       key_secret: SSH_KEY_MAINFRAME     # backend secret holding the private key
+#       host_keys:                        # OpenSSH public key lines, pinned
+#         - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... mainframe"
+#       users: [ansible]                  # optional username pin
+#       # allow_unbound_sessions: true    # LOUD opt-out: no destination check
+#       #                                 # (only for non-OpenSSH clients)

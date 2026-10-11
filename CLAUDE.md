@@ -50,6 +50,51 @@ The same logic applies to the Ansible role's `kow_secrets` var: Claude edits the
 
 For composite bindings (multi-value templates), see `bindings.example.yaml` and `docs/architecture.md` §4.2.
 
+## `skills/kow/` ships with the product — update it in the SAME commit
+
+`skills/kow/` is a user-facing artifact: people drop it into their agent and it becomes the only
+thing the agent knows about kow. Nothing imports it, no test asserts on it, and CI cannot fail
+because of it, so it rots silently and the rot is only discovered when an agent confidently gives a
+user wrong instructions about this product.
+
+That has already happened. `References/NoteSchema.md` documented the note grammar but never said
+that notes are **one of eight injector types**, so an agent read the six-key table as the product's
+full capability and told the maintainer that kow "structurally cannot" broker OAuth2
+client-credentials — a feature that had shipped months earlier (ADR-0030).
+
+**Touching any of these means editing `skills/kow/` in the same commit:**
+
+| If you change… | Update |
+|---|---|
+| an injector type, or add a new one | `References/NoteSchema.md` injector table; `SKILL.md` decision rule |
+| an audit `reason=` string, or its meaning | `SKILL.md` § Diagnosing — the reason table is a diagnostic contract |
+| fail-closed behaviour (what the CLIENT sees on a denial) | `SKILL.md` § fail-closed signatures. Header returns 503; body sends an empty body. These differ, and each gets misread as a different bug |
+| `_ALLOWED_NOTE_KEYS`, the marker line, or placeholder format | `References/NoteSchema.md` allowed-keys table; `SKILL.md` quick reference |
+| `binding_source` precedence | the precedence-trap notes in both files |
+| a CLI subcommand or flag used in the workflows | `Workflows/*.md` |
+
+**The same claims live in more than one file, so check all of them.** `docs/troubleshooting.md`
+duplicates the audit-reason and fail-closed contracts; `docs/architecture.md` duplicates the
+capability and precedence claims. A maintainer can follow the table above to the letter and still
+ship two documents that disagree. Before committing a behaviour change, grep for the claim, not
+just the filename:
+
+```bash
+rg -n 'secret_unavailable|fail-closed|binding_source|injector types' docs/ skills/ README.md CLAUDE.md
+```
+
+If that returns hits in files your diff does not touch, you are shipping a contradiction. The
+injector-type COUNT is the canary — `_INJECTOR_TYPES` in `config_models.py` is the source of truth,
+and prose saying "eight" while the dict holds ten is exactly the drift this section exists to catch.
+
+**Keep it public-clean.** The shipped skill and `docs/` must name no real customer, vendor,
+hostname, account identifier or personal path. Real incidents are valuable and should be kept, but
+written as "one commercial provider" and `api.example.com`. Concrete error strings and status codes
+are the teaching content — preserve those verbatim.
+
+**Two copies exist for a reason.** A maintainer may also run a private, personalised copy of this
+skill in their own agent config. Fixes must land HERE, in the repo, or every user keeps the bug.
+
 ## Dependency edits — regenerate both lockfiles
 
 If you touch `pyproject.toml` deps, regenerate `requirements.lock` *and* `requirements-dev.lock` in the same commit using the snippet in [`AGENTS.md` → Dependency changes](./AGENTS.md#dependency-changes). Don't hand-edit a lockfile to "just add one package" — the hash-pinning + cooldown gate (`scripts/check-lockfile-hashes.py` + `scripts/check-lockfile-drift.sh`, mirrored in CI) will fail the commit. Operator reviews the lockfile diff alongside the code diff before merge.

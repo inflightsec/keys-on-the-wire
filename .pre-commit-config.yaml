@@ -42,7 +42,11 @@ repos:
         # the public jwt.io sample key used by the multi-line-secret tests
         # (--stdin-raw / kow-keyd, ADR-0051). None is a loadable key; real-key
         # detection for the repo is TruffleHog's job (verified-only scan).
-        exclude: '^tests/(test_cli_doctor\.py|cli/test_secret\.py|backends/test_keychain_helper\.py|vm-e2e/macos-keyd-e2e\.sh)$'
+        # docs/keychain-helper.md quotes the bare PEM header LINE in prose
+        # (explaining what --stdin would truncate to); the hook matches the
+        # substring anywhere, so the sentence cannot name the line verbatim
+        # without tripping it. No key material of any kind in that file.
+        exclude: '^(tests/(test_cli_doctor\.py|cli/test_secret\.py|backends/test_keychain_helper\.py|vm-e2e/macos-keyd-e2e\.sh)|docs/keychain-helper\.md)$'
 
   # ─── Ruff: lint + format. Single source of truth, mirrors CI. ─────────
   # Pinned to the ruff in requirements-dev.lock (0.15.21) so the local

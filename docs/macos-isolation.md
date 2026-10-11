@@ -64,6 +64,14 @@ If you genuinely cannot split accounts, the honest options are:
 - accept that the keychain is at-rest protection only, and rely on kow's per-host bindings + audit log to bound and record what the agent can *use*;
 - or wait for the signed-helper tier (a Developer-ID-signed binary against the data-protection keychain with Touch ID per release), which is the only way to make "only kow can read this" enforceable on one account.
 
+> **This is NOT the `kow-keyd` helper that ships in 1.2.0.** That helper exists to carry
+> raw bytes so a multi-line secret survives the transmit path ([ADR-0051](adrs/ADR-0051-keychain-helper-transmit-path.md));
+> it buys **transport, not access control**. It has no caller authentication, so any process
+> running as the operator can invoke it and be handed the secret, and the default self-signed
+> identity's private key sits in the operator's own login keychain with `codesign` authorised
+> against it. Turning `use_helper: require` on does not narrow the boundary described above:
+> on one account it remains the macOS user account, exactly as [ADR-0046](adrs/ADR-0046-macos-keychain-backend.md) says.
+
 ## Keychain practices worth following
 
 - **Never use `-A`.** It makes an item readable by any process with no prompt, permanently. kow never passes it.

@@ -29,6 +29,13 @@ here means "intended, not yet shipped." No dates — priorities, not promises.
   `all` restores full termination ([ADR-0026](adrs/ADR-0026-tls-termination-scoping.md),
   accepted).
 
+- **ssh-agent signing oracle (experimental)** — opt-in top-level `ssh:`
+  section: kow serves the SSH agent protocol (RFC 9987) on a Unix socket and
+  signs userauth challenges with vault-held keys; destination policy via
+  verified `session-bind@openssh.com` against per-binding pinned host keys;
+  `kow env` exports `SSH_AUTH_SOCK`. Ansible integrates with that one env
+  var ([ADR-0053](adrs/ADR-0053-ssh-agent-signing-oracle.md), `proposed`).
+
 ## Planned
 
 ### Security posture

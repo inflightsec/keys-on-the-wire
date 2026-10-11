@@ -23,9 +23,10 @@ Helps an agent walk a user through brokering a **new** secret through **keys-on-
 
 ## Three hard rules
 
-1. **Notes-first, config never.** Modern kow reads bindings from each secret's own metadata — the **BWS `notes` field**, the **GSM `kow-binding` annotation**, and equivalent per-secret metadata on future backends (`binding_source: both` is the default; notes win over file). So a new credential is added entirely in the vault UI/CLI — **no editing `bindings`/`secrets:` in the kow config, no `ansible`/`kow setup` redeploy.** Only reach for the config (file source) when a note genuinely can't express the binding (see Gotchas).
+1. **Notes-first, config never.** Modern kow reads bindings from each secret's own metadata — the **BWS `notes` field**, the **GSM `kow-binding` annotation**, and equivalent per-secret metadata on future backends (`binding_source: both` is the default; notes win over file). So a new credential is added entirely in the vault UI/CLI — **no editing `bindings`/`secrets:` in the kow config, no `ansible`/`kow setup` redeploy.** Only reach for the config (file source) when a note genuinely can't express the binding (see Gotchas). **The minting injectors are exactly that case**: a note can only express `type: header` (ADR-0024 keeps vault metadata scope-narrowing, never binding-declaring), so oauth2, sigv4, github_app and `gcp_service_account` bindings live in the config file. That is not a workaround, it is the trust boundary — say so rather than trying to author one as a note.
 2. **Propose, never apply — for the SECRET.** This skill NEVER writes the secret value or the annotation to the vault for the user. It prints the secret name, tells the user where to put the value, and prints the annotation text to paste. The human applies it. (The assistant handling the raw secret is exactly what kow exists to prevent.)
 3. **Persist the placeholder at generation — BLOCKING.** The instant `kow binding new` mints a placeholder it is shown once, on that command's output. You MUST get it into durable storage in the SAME session — never leave it living only in terminal scrollback. The placeholder is a non-secret sentinel (unlike rule 2's secret), so you *may and should* write it yourself: put the printed `export <NAME>='kow-PLACEHOLDER-…'` line straight into the consuming app's `.env`/config, or hand the user the exact line and confirm they saved it. A binding whose placeholder never reaches the consumer injects nothing — this is the single most common "kow isn't working" cause. (Backstop: the placeholder is also recoverable later from the vault note and via `kow env`, but do NOT defer to that — wire it now.)
+   **AND ALWAYS into one fixed, agent-readable placeholder registry** (e.g. the operator's canonical `.env`, as `<NAME>_PLACEHOLDER=…`). The consuming app's own config is necessary but not sufficient: it is invisible to every other agent or session, and a placeholder that lives in exactly one consumer is one deleted file away from being lost. Placeholders are non-secret sentinels by design, so a shared registry costs nothing security-wise and ends the "which session has it" hunt permanently. Recovery order when one seems missing: the registry first, then request/activity logs (the sentinel appears verbatim in any request that used it), then `kow env` — never the operator's memory.
 
 ## Workflow routing
 
@@ -33,6 +34,7 @@ Helps an agent walk a user through brokering a **new** secret through **keys-on-
 |---------|----------|
 | "add/route/broker a secret through kow", "what do I put in the notes" | `Workflows/AddSecret.md` |
 | "connect an OAuth service", "avp oauth login", "sign in with Google/GitHub through kow", "get a refresh token into the vault" | `Workflows/OauthLogin.md` |
+| "give my app a GCP service account", "let this run as a service account without the key", "gcloud/BigQuery/GCS through kow", "ADC without a key file" | `Workflows/AddGcpServiceAccount.md` |
 | "kow isn't injecting", "my key isn't being swapped", "the binding doesn't work" | § Diagnosing below — read the audit BEFORE touching the note |
 
 ## Diagnosing "kow isn't injecting" — the audit answers it in one look
@@ -42,9 +44,18 @@ Helps an agent walk a user through brokering a **new** secret through **keys-on-
 | What the audit shows for the host | What it means | Where to look next |
 |---|---|---|
 | `inject_decision` with `reason: binding_matched` | **Injection works.** The binding is fine. | Upstream rejected the key, or you are reading the wrong request. |
+| `inject_decision` with `reason: secret_unavailable:SecretNotFoundError` | **Routing matched; the NAME did not resolve.** kow matched host, method and path, then found no secret under the configured name. | The audit cannot distinguish "not created yet" from "binding names it wrongly". Compare `secret_name` against the vault FIRST; if the name is right, create the secret — no config change and no restart, since secrets resolve per request. |
 | `inject_decision` with any other `reason` | Binding seen, injection refused. | That `reason` string names the cause — read it, don't guess. |
 | `tls_passthrough` with `reason: unbound_destination` | Host is genuinely unbound. | The note is missing, unmarked, or names a different host. |
 | **Host absent from the audit entirely** | **The request never reached kow.** | Client side: `NO_PROXY`, or a process that never inherited `HTTPS_PROXY`. Nothing about the binding is implicated. |
+
+**Know each injector's fail-closed SIGNATURE before blaming the upstream.** When a secret cannot be fetched kow never forwards the placeholder verbatim (invariant G6) — but what the upstream then sees depends on the injector, and each shape gets misread as a different bug:
+- **header injector** → kow answers the client itself with **`503`**; the request never leaves the proxy.
+- **body injector** → the request IS sent, with a body **truncated at the point of failure**. The replacer streams, so chunks emitted before the failing one already went upstream; every chunk after it returns `b""`. A small single-buffer body (a typical OAuth2 token request) therefore arrives **empty**; a large one arrives as a prefix. Either way the placeholder is never forwarded, which is the invariant. The upstream then complains that its *first required field* is missing — a real case returned `400 "grant_type was not specified"` although the client had plainly sent `grant_type`. That is kow failing closed correctly, not body corruption and not the upstream rejecting your sentinel.
+
+So an upstream 4xx naming a missing first field, sitting next to a `secret_unavailable` denial, means **create the secret** — not rewrite the binding.
+
+**"I re-sent it without the proxy and got the same error" is usually an INVALID control.** On a host configured for kow, `HTTPS_PROXY` is typically exported environment-wide, so a `curl` without `--proxy` still goes through kow; the two "different" requests are the same request. Strip the proxy variables and a locked-down host may have no direct egress at all, returning `HTTP 000`. A real session compared proxied against "unproxied", got byte-identical responses, and blamed the upstream — both had been proxied. **The audit is the control, not a second curl.** If you need a true bypass, prove it: check `env | grep -i proxy` and confirm the connection log shows no proxy tunnel.
 
 **Absence is NOT passthrough.** This is the trap that cost the eleven rounds. A tunnelled connection *logs* a `tls_passthrough` naming the host, so "the host never appears in the audit" **rules the passthrough theory out** rather than supporting it. Reading an absence as evidence for a specific mechanism sends you a whole layer away from the fault.
 

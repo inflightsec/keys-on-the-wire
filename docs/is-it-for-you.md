@@ -36,7 +36,7 @@ Reach for kow when:
 
 Look elsewhere, or add another tool alongside it, when:
 
-- You need to gate non-HTTP protocols (Postgres, SSH, Kubernetes) or want a full allow/deny policy engine with approval chains. A network-layer agent firewall fits that better; see [Comparison](comparison.md).
+- You need to gate non-HTTP protocols (Postgres, Kubernetes) or want a full allow/deny policy engine with approval chains. A network-layer agent firewall fits that better; see [Comparison](comparison.md). (SSH is the exception: kow can broker SSH keys as an agent-protocol signing oracle — [ADR-0053](adrs/ADR-0053-ssh-agent-signing-oracle.md), experimental. If your whole fleet is on a Tailscale-style mesh, Tailscale SSH removes the keys entirely for in-mesh hosts and may be the better answer there.)
 - You need hard network isolation. That is an egress firewall's job, running *alongside* kow, not instead of it.
 
 If those fit, the [Quickstart](quickstart.md) gets you to a visible substitution in about ten minutes.

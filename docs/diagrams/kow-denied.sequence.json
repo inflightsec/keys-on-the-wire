@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Fail closed: a bound key used against an unbound method",
+    "output": "docs/diagrams/kow-denied.html",
+    "viewBox": [
+      880,
+      560
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "views": [
+      {
+        "id": "scope-denial",
+        "label": "The scope denial",
+        "focus": [
+          "kow",
+          "policy"
+        ],
+        "note": "The same placeholder is legitimate for GET and refused for POST, by the binding scope."
+      },
+      {
+        "id": "omission",
+        "label": "Enforcement by omission",
+        "focus": [
+          "kow",
+          "upstream",
+          "agent"
+        ],
+        "note": "kow forwards the placeholder rather than an error, so upstream auth rejects it normally."
+      }
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "dashed": {
+          "label": "unbound, not injected"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agent",
+      "sublabel": "prompt-injected"
+    },
+    {
+      "id": "kow",
+      "type": "security",
+      "label": "Keys on the Wire",
+      "sublabel": "loopback proxy :14322"
+    },
+    {
+      "id": "policy",
+      "type": "security",
+      "label": "Binding Policy",
+      "sublabel": "methods: [GET]"
+    },
+    {
+      "id": "upstream",
+      "type": "external",
+      "label": "Upstream API",
+      "sublabel": "api.github.com"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 310,
+      "label": "Exfil attempt"
+    },
+    {
+      "from": 325,
+      "to": 465,
+      "label": "Denied by omission"
+    }
+  ],
+  "messages": [
+    {
+      "id": "req-post",
+      "from": "agent",
+      "to": "kow",
+      "y": 190,
+      "label": "POST /gists, same placeholder",
+      "variant": "dashed"
+    },
+    {
+      "id": "scope-check",
+      "from": "kow",
+      "to": "policy",
+      "y": 240,
+      "label": "scope check",
+      "variant": "security"
+    },
+    {
+      "id": "deny",
+      "from": "policy",
+      "to": "kow",
+      "y": 288,
+      "label": "deny: bound to GET only",
+      "variant": "return"
+    },
+    {
+      "id": "forward-verbatim",
+      "from": "kow",
+      "to": "upstream",
+      "y": 338,
+      "label": "placeholder forwarded verbatim",
+      "variant": "dashed"
+    },
+    {
+      "id": "upstream-401",
+      "from": "upstream",
+      "to": "kow",
+      "y": 386,
+      "label": "401 bad credentials",
+      "variant": "return"
+    },
+    {
+      "id": "resp-401",
+      "from": "kow",
+      "to": "agent",
+      "y": 432,
+      "label": "401, no policy leaked",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "kow",
+      "from": 185,
+      "to": 440,
+      "type": "security"
+    },
+    {
+      "participant": "policy",
+      "from": 235,
+      "to": 293,
+      "type": "security"
+    },
+    {
+      "participant": "upstream",
+      "from": 333,
+      "to": 392,
+      "type": "external"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Fail closed by omission",
+      "items": [
+        "A denied destination gets the placeholder, never a 5xx (G5)",
+        "Upstream returns its own 401, leaking no policy",
+        "methods: [GET] closes the gist-exfil path (T-1.5)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "What this does not claim",
+      "items": [
+        "kow brokers credentials, it is not an egress firewall",
+        "Scope is the lever against a bad actor at the agent UID",
+        "Every allow and deny lands in the audit log"
+      ]
+    }
+  ]
+}

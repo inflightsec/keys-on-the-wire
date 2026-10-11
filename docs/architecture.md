@@ -14,6 +14,8 @@
 4. Substitutes placeholder → real secret on the upstream socket
 5. Records the decision in an append-only audit log
 
+Both outcomes of that sequence are drawn in [§4.3 Request lifecycle](#43-request-lifecycle).
+
 Requests whose destinations aren't bound to any secret are forwarded unmodified, the proxy is a transparent intermediary, not a gatekeeper. Destination filtering / network-egress lockdown is **out of scope** and is left to the host's existing firewall.
 
 Scope:
@@ -236,11 +238,38 @@ The salt (32 random bytes, `0600`, rejected if group/other-readable or wrong-own
 
 A request carrying a placeholder whose secret has **no binding** in its note (including an unmarked note) fails closed and audits `no_binding_in_notes`; a **malformed marked** note audits `invalid_binding_metadata`. Both forward the placeholder verbatim (no real value injected).
 
+**What a note can express — and the misreading to avoid.** `_ALLOWED_NOTE_KEYS` (`notes_binding.py`) is exactly `{host, hosts, header, format, methods, paths, placeholder}`, and any other key fails closed. There is no `inject:`/`type:` key, so **a note expresses static-header injection of one secret and nothing else**. Every other injector — `body`, `oauth2_client_credentials`, `oauth2_refresh`, `github_app`, `sigv4`, `hmac`, `jwt_bearer`, `multi` — is **file source only**.
+
+This distinction is easy to invert, and the failure is expensive in the wrong direction: on 2026-09-20 an operator reading the note grammar as the product's full surface concluded kow could not broker OAuth2 client-credentials at all, when `oauth2_client_credentials` (ADR-0030) had shipped two months earlier. The rule worth stating positively: **notes-first is the default for a one-secret header credential; anything needing two secrets, a token URL, a signature, or a non-header injection point is file source.**
+
+**Migration precedence trap.** Under `binding_source: both` a note **wins over** a file binding for the same secret. Moving a secret from note to file source therefore requires *deleting the note* — leaving it in place silently disables the injector that replaced it.
+
+**Two-part credentials and the Basic assumption.** A note holds one secret, so a two-part credential (`client_id`+`client_secret`, `email:token`) is notes-expressible only when the upstream accepts both parts pre-encoded into one header value, i.e. HTTP Basic. RFC 6749 §2.3.1 requires authorization servers to support Basic, **but that is not evidence about a given server**: one commercial provider's token endpoint answers a valid Basic header with `400 {"code":"invalid_request","message":"client_id was not specified"}`, requiring the credentials in the request body instead. Probe the upstream with one request before choosing the binding shape — fake credentials suffice, since a "missing parameter" error and a "bad credentials" error distinguish the two cases. A wrong choice here produces an inert note that looks correct in the vault. Full decision table: [Troubleshooting](troubleshooting.md).
+
 **Notes host allowlist (`notes_host_allowlist`, ADR-0024).** Opt-in top-level key that bounds where notes/annotation bindings may route: **annotations may only narrow scope, never add a host.** When absent (default), nothing changes. When set, a notes/annotation host outside the list has its binding dropped fail-closed and a request toward it audits the distinct reason `host_not_in_allowlist`. Motive: on GCP, `secretmanager.secrets.update` (edit the `kow-binding` annotation) and `versions.access` (read the value) are independently grantable, so without this an annotation-only writer could route a secret to a host they control (confused deputy). Multi-host notes (ADR-0021) are judged per host — a disallowed host drops only its own fan-out entry. `*.suffix` allowlist entries ride the `allow_wildcard_hosts` opt-in. File `secrets:` bindings are the trusted tier and exempt. IAM hygiene (restricting annotation-write) remains the primary GCP control; this is the structural backstop.
 
 > Listing secrets requires a listable backend (`bws`, `gsm`, `static`, `aws-secrets-manager`, `keychain`). Notes are fetched at configure() time (the binding-policy refresh boundary, analogous to re-reading the file) AND re-resolved in the background every `notes_refresh_seconds` (ADR-0032, default 60s) for vault backends, so a newly-added secret is brokered without a restart; the refresh keeps the warm value/token caches and fails safe (keeps live bindings) if the vault can't be listed. Per-request credential VALUE fetches still honour `cache.ttl_seconds`.
 
 ### 4.3 Request lifecycle
+
+Two outcomes are worth seeing before the exhaustive trace: a request that gets
+injected, and one that does not. Sources and regeneration: [`docs/diagrams/`](diagrams/).
+
+**Authorized — the placeholder is swapped on the wire.**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/kow-injection.dark.png">
+  <img alt="Sequence diagram: the agent sends a placeholder, the binding policy authorizes the destination, the vault is read, the audit record is fsynced, and only then does the real key reach the upstream socket" src="diagrams/kow-injection.light.png">
+</picture>
+
+**Denied by omission — the placeholder is forwarded verbatim (G5).**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/kow-denied.dark.png">
+  <img alt="Sequence diagram: the same placeholder used against POST /gists when the binding allows only GET; kow forwards the placeholder rather than an error and upstream returns its own 401" src="diagrams/kow-denied.light.png">
+</picture>
+
+The full trace, including the `http_connect` hook the diagrams elide:
 
 ```
 1. Agent: CONNECT api.anthropic.com:443 HTTP/1.1
@@ -283,10 +312,12 @@ A request carrying a placeholder whose secret has **no binding** in its note (in
 
 JSONL, append-only via `chattr +a`. One event per line. Every record carries
 `v` — the audit JSON contract version (`AUDIT_CONTRACT_VERSION` in `audit.py`).
-**Current version: 4** (v2 added `binding_source` to `inject_decision` and the
+**Current version: 5** (v2 added `binding_source` to `inject_decision` and the
 `no_binding_in_notes` reason, per ADR-0011; v3 added the `honeytoken_triggered`
 event, per ADR-0019; v4 added the `policy_advisory`
-event type, per ADR-0047). Bumping
+event type, per ADR-0047; v5 added the three ssh-agent oracle events
+`ssh_session_bound` / `ssh_sign_allowed` / `ssh_sign_denied`, per ADR-0053 —
+keys appear as SHA256 fingerprints only, never blobs or signed data). Bumping
 this version is a contract change: see hard constraint #3 in
 [`AGENTS.md`](../AGENTS.md).
 
@@ -316,7 +347,7 @@ Rules:
 - `fail_on_unwritable: true` - disk full / attribute removed / permission flip = proxy returns 503 (G4 + G6)
 - Synchronous `fsync()` after every event, no exceptions. Throughput is bounded by the audit disk's fsync latency, but at the volume a credential broker sees (a few hundred decisions per minute at most) this is well below any threshold worth optimizing.
 - **Never log** header values, request bodies, response bodies, or query strings (Vault-style audit minimization)
-- **Closed event-type set (ADR-0023):** `AUDIT_EVENT_TYPES` in `audit.py` enumerates every `type` the stream may carry; `AuditWriter.emit()` raises on any unlisted type. A new event type cannot ship without a conscious edit there plus no-leak test coverage. The current set is `inject_decision`, `deny`, `token_exchange`, `refresh_token_rotated`, `honeytoken_triggered`, `proxy_restart`, `upstream_response`, `tls_passthrough` (ADR-0026 — a TLS connection tunnelled un-terminated because its destination is unbound; dest host + reason only, never decrypted), `notes_refreshed` (ADR-0032 — the background refresh changed the bound set; added/removed names only), and `policy_advisory` (ADR-0047 — a one-time advisory that a binding omits `methods:`; its own type so advisories never inflate `inject_decision` counts).
+- **Closed event-type set (ADR-0023):** `AUDIT_EVENT_TYPES` in `audit.py` enumerates every `type` the stream may carry; `AuditWriter.emit()` raises on any unlisted type. A new event type cannot ship without a conscious edit there plus no-leak test coverage. The current set is `inject_decision`, `deny`, `token_exchange`, `refresh_token_rotated`, `honeytoken_triggered`, `proxy_restart`, `upstream_response`, `tls_passthrough` (ADR-0026 — a TLS connection tunnelled un-terminated because its destination is unbound; dest host + reason only, never decrypted), `notes_refreshed` (ADR-0032 — the background refresh changed the bound set; added/removed names only), `policy_advisory` (ADR-0047 — a one-time advisory that a binding omits `methods:`; its own type so advisories never inflate `inject_decision` counts), and the ADR-0053 ssh-agent oracle events `ssh_session_bound` (a verified `session-bind@openssh.com`: destination host-key fingerprint + forwarding flag), `ssh_sign_allowed`, and `ssh_sign_denied` (the signing verdict, fsynced before the signature bytes reach the client socket — the G6 analogue; reason taxonomy in `kow/sshagent/policy.py`).
 - Off-host shipping: a separate tailer forwards this stream to a central collector (ADR-0019); the local log stays the fail-closed source of truth and is never in the shipper's failure path
 
 **Reason taxonomy on `inject_decision` events** (use these to filter and alert from the audit stream):

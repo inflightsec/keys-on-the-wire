@@ -1,0 +1,1599 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="560" data-theme="dark" viewBox="0 0 880 560" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase"><style><![CDATA[
+:root{background:var(--bg);}
+/* ==========================================================
+       THEME VARIABLES — switch by toggling [data-theme] on <html>
+       ========================================================== */
+    :root,
+    [data-theme="dark"] {
+      --bg: #020617;
+      --grid: #1e293b;
+      --text: #ffffff;
+      --text-muted: #94a3b8;
+      --text-dim: #475569;
+      /* UI chrome and menu hints need more contrast than SVG .t-dim accents */
+      --text-faint: #7d8da1;
+
+      --panel: rgba(15, 23, 42, 0.5);
+      --panel-border: #1e293b;
+      --lane-fill: rgba(15, 23, 42, 0.22);
+      --lane-stroke: #334155;
+
+      --arrow: #64748b;
+      --arrow-emphasis: #34d399;
+
+      /* Opaque mask color used behind semi-transparent component fills
+         so the arrows drawn underneath are properly hidden. */
+      --mask: #0f172a;
+
+      --frontend-fill:    rgba(8, 51, 68, 0.4);
+      --frontend-stroke:  #22d3ee;
+      --backend-fill:     rgba(6, 78, 59, 0.4);
+      --backend-stroke:   #34d399;
+      --database-fill:    rgba(76, 29, 149, 0.4);
+      --database-stroke:  #a78bfa;
+      --cloud-fill:       rgba(120, 53, 15, 0.3);
+      --cloud-stroke:     #fbbf24;
+      --security-fill:    rgba(136, 19, 55, 0.4);
+      --security-stroke:  #fb7185;
+      --messagebus-fill:  rgba(251, 146, 60, 0.3);
+      --messagebus-stroke:#fb923c;
+      --external-fill:    rgba(30, 41, 59, 0.5);
+      --external-stroke:  #94a3b8;
+
+      --toolbar-bg:       rgba(15, 23, 42, 0.8);
+      --toolbar-border:   #334155;
+      --toolbar-text:     #e2e8f0;
+      --toolbar-hover:    rgba(15, 23, 42, 0.95);
+      --toolbar-menu-bg:  #0f172a;
+    }
+[data-theme="light"] {
+      --bg: #f8fafc;
+      --grid: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --text-dim: #94a3b8;
+      --text-faint: #64748b;
+
+      --panel: #ffffff;
+      --panel-border: #e2e8f0;
+      --lane-fill: rgba(248, 250, 252, 0.65);
+      --lane-stroke: #cbd5e1;
+
+      --arrow: #94a3b8;
+      --arrow-emphasis: #059669;
+
+      --mask: #ffffff;
+
+      --frontend-fill:    rgba(34, 211, 238, 0.15);
+      --frontend-stroke:  #0891b2;
+      --backend-fill:     rgba(52, 211, 153, 0.18);
+      --backend-stroke:   #059669;
+      --database-fill:    rgba(167, 139, 250, 0.2);
+      --database-stroke:  #7c3aed;
+      --cloud-fill:       rgba(251, 191, 36, 0.18);
+      --cloud-stroke:     #d97706;
+      --security-fill:    rgba(251, 113, 133, 0.15);
+      --security-stroke:  #e11d48;
+      --messagebus-fill:  rgba(251, 146, 60, 0.15);
+      --messagebus-stroke:#ea580c;
+      --external-fill:    rgba(148, 163, 184, 0.18);
+      --external-stroke:  #64748b;
+
+      --toolbar-bg:       rgba(255, 255, 255, 0.92);
+      --toolbar-border:   #cbd5e1;
+      --toolbar-text:     #334155;
+      --toolbar-hover:    #ffffff;
+      --toolbar-menu-bg:  #ffffff;
+    }
+/* ==========================================================
+       SIGNAL FLOW — an opt-in, motion-forward visual preset.
+       The variables also target a standalone exported SVG, whose
+       root carries data-preset and data-theme directly.
+       ========================================================== */
+    [data-preset="signal-flow"][data-theme="dark"] {
+      --bg: #030711;
+      --grid: #15233a;
+      --panel: rgba(6, 14, 28, 0.78);
+      --panel-border: #1d3350;
+      --lane-fill: rgba(9, 22, 40, 0.5);
+      --lane-stroke: #2c4564;
+      --text: #f5fbff;
+      --text-muted: #9eb0c7;
+      --text-dim: #52667f;
+      --text-faint: #7890ad;
+      --mask: #07101e;
+      --frontend-fill: rgba(6, 182, 212, 0.14);
+      --frontend-stroke: #67e8f9;
+      --backend-fill: rgba(16, 185, 129, 0.14);
+      --backend-stroke: #5eead4;
+      --database-fill: rgba(139, 92, 246, 0.16);
+      --database-stroke: #c4b5fd;
+      --cloud-fill: rgba(245, 158, 11, 0.13);
+      --cloud-stroke: #fcd34d;
+      --security-fill: rgba(244, 63, 94, 0.13);
+      --security-stroke: #fda4af;
+      --messagebus-fill: rgba(249, 115, 22, 0.13);
+      --messagebus-stroke: #fdba74;
+      --external-fill: rgba(71, 85, 105, 0.24);
+      --external-stroke: #a5b4c7;
+      --arrow: #7890ad;
+      --arrow-emphasis: #2dd4bf;
+      --toolbar-bg: rgba(7, 16, 30, 0.86);
+      --toolbar-border: #29415f;
+      --toolbar-menu-bg: #07101e;
+    }
+[data-preset="signal-flow"][data-theme="light"] {
+      --bg: #f4f9fc;
+      --grid: #d4e5ee;
+      --panel: rgba(255, 255, 255, 0.82);
+      --panel-border: #bfd5e2;
+      --lane-fill: rgba(232, 243, 248, 0.62);
+      --lane-stroke: #a9c5d5;
+      --text: #102638;
+      --text-muted: #587287;
+      --text-dim: #8aa2b4;
+      --text-faint: #668397;
+      --mask: #ffffff;
+      --frontend-fill: rgba(6, 182, 212, 0.09);
+      --frontend-stroke: #0789a1;
+      --backend-fill: rgba(5, 150, 105, 0.09);
+      --backend-stroke: #087f69;
+      --database-fill: rgba(124, 58, 237, 0.09);
+      --database-stroke: #7254c7;
+      --cloud-fill: rgba(217, 119, 6, 0.08);
+      --cloud-stroke: #b9670b;
+      --security-fill: rgba(225, 29, 72, 0.08);
+      --security-stroke: #c53a59;
+      --messagebus-fill: rgba(234, 88, 12, 0.08);
+      --messagebus-stroke: #c65f27;
+      --external-fill: rgba(100, 116, 139, 0.1);
+      --external-stroke: #607a8c;
+      --arrow: #7b97aa;
+      --arrow-emphasis: #0d9488;
+    }
+/* ==========================================================
+       BLUEPRINT — a review-first drafting preset for deployment,
+       infrastructure, and technical design documentation. It keeps
+       the same semantic palette and geometry while trading glow for
+       precise grid contrast, squared materials, and drafting marks.
+       ========================================================== */
+    [data-preset="blueprint"][data-theme="dark"] {
+      --bg: #06131f;
+      --grid: #17425a;
+      --panel: rgba(7, 27, 43, 0.9);
+      --panel-border: #27627f;
+      --lane-fill: rgba(10, 43, 66, 0.36);
+      --lane-stroke: #34799a;
+      --text: #e3f6ff;
+      --text-muted: #91b8ca;
+      --text-dim: #557e92;
+      --text-faint: #739caf;
+      --mask: #0a2031;
+      --frontend-fill: rgba(26, 157, 193, 0.14);
+      --frontend-stroke: #66d9ef;
+      --backend-fill: rgba(31, 155, 124, 0.13);
+      --backend-stroke: #69dfbd;
+      --database-fill: rgba(120, 105, 196, 0.14);
+      --database-stroke: #b4a8ff;
+      --cloud-fill: rgba(197, 145, 43, 0.13);
+      --cloud-stroke: #ffd166;
+      --security-fill: rgba(199, 76, 104, 0.13);
+      --security-stroke: #ff8da1;
+      --messagebus-fill: rgba(207, 112, 49, 0.13);
+      --messagebus-stroke: #ffad66;
+      --external-fill: rgba(84, 119, 139, 0.18);
+      --external-stroke: #a7cad9;
+      --arrow: #78a3b7;
+      --arrow-emphasis: #64dfc1;
+      --toolbar-bg: rgba(7, 28, 45, 0.92);
+      --toolbar-border: #34799a;
+      --toolbar-text: #d8f3ff;
+      --toolbar-hover: rgba(18, 58, 83, 0.95);
+      --toolbar-menu-bg: #0a2031;
+    }
+[data-preset="blueprint"][data-theme="light"] {
+      --bg: #edf7fa;
+      --grid: #b5d5e1;
+      --panel: rgba(249, 253, 255, 0.94);
+      --panel-border: #78aabd;
+      --lane-fill: rgba(210, 232, 240, 0.42);
+      --lane-stroke: #83b2c4;
+      --text: #123344;
+      --text-muted: #4e7486;
+      --text-dim: #86a6b4;
+      --text-faint: #668c9d;
+      --mask: #f9fdff;
+      --frontend-fill: rgba(8, 145, 178, 0.08);
+      --frontend-stroke: #087f9c;
+      --backend-fill: rgba(5, 128, 101, 0.08);
+      --backend-stroke: #08755f;
+      --database-fill: rgba(100, 75, 180, 0.08);
+      --database-stroke: #6757a8;
+      --cloud-fill: rgba(181, 120, 15, 0.08);
+      --cloud-stroke: #a86609;
+      --security-fill: rgba(190, 48, 80, 0.07);
+      --security-stroke: #b32f50;
+      --messagebus-fill: rgba(196, 81, 22, 0.07);
+      --messagebus-stroke: #b65120;
+      --external-fill: rgba(79, 112, 128, 0.08);
+      --external-stroke: #506f7e;
+      --arrow: #6d93a5;
+      --arrow-emphasis: #087f69;
+      --toolbar-bg: rgba(247, 252, 254, 0.94);
+      --toolbar-border: #8ab5c5;
+      --toolbar-text: #294f61;
+      --toolbar-hover: #ffffff;
+      --toolbar-menu-bg: #f9fdff;
+    }
+/* ==========================================================
+       EDITORIAL — a warm, publication-minded preset for design
+       reviews, launch notes, and documentation. The diagram keeps
+       the same semantic palette and exact geometry, but trades
+       software chrome for paper, ink, ruled structure, and one
+       restrained vermilion accent.
+       ========================================================== */
+    [data-preset="editorial"][data-theme="dark"] {
+      --bg: #181611;
+      --grid: #39342a;
+      --panel: rgba(35, 31, 24, 0.96);
+      --panel-border: #625a4a;
+      --lane-fill: rgba(52, 46, 35, 0.46);
+      --lane-stroke: #726957;
+      --text: #f4eddf;
+      --text-muted: #b9ae9b;
+      --text-dim: #776e60;
+      --text-faint: #9d917e;
+      --mask: #231f18;
+      --frontend-fill: rgba(43, 133, 142, 0.16);
+      --frontend-stroke: #7fc6c7;
+      --backend-fill: rgba(63, 132, 92, 0.16);
+      --backend-stroke: #8fc29e;
+      --database-fill: rgba(117, 91, 141, 0.17);
+      --database-stroke: #c0a4d0;
+      --cloud-fill: rgba(170, 119, 49, 0.16);
+      --cloud-stroke: #d8ad68;
+      --security-fill: rgba(157, 69, 65, 0.17);
+      --security-stroke: #df9085;
+      --messagebus-fill: rgba(174, 79, 42, 0.16);
+      --messagebus-stroke: #df946f;
+      --external-fill: rgba(126, 115, 96, 0.18);
+      --external-stroke: #b8ad99;
+      --arrow: #948978;
+      --arrow-emphasis: #dd6b3d;
+      --toolbar-bg: rgba(35, 31, 24, 0.92);
+      --toolbar-border: #625a4a;
+      --toolbar-text: #eee5d5;
+      --toolbar-hover: #302a20;
+      --toolbar-menu-bg: #231f18;
+    }
+[data-preset="editorial"][data-theme="light"] {
+      --bg: #f2eee5;
+      --grid: #d8d0c2;
+      --panel: rgba(251, 248, 241, 0.97);
+      --panel-border: #c4b9a6;
+      --lane-fill: rgba(229, 221, 207, 0.42);
+      --lane-stroke: #b8aa94;
+      --text: #242018;
+      --text-muted: #6f6658;
+      --text-dim: #a09788;
+      --text-faint: #817767;
+      --mask: #fbf8f1;
+      --frontend-fill: rgba(31, 117, 126, 0.09);
+      --frontend-stroke: #287e84;
+      --backend-fill: rgba(42, 119, 75, 0.09);
+      --backend-stroke: #397b53;
+      --database-fill: rgba(105, 75, 130, 0.09);
+      --database-stroke: #765d86;
+      --cloud-fill: rgba(157, 103, 31, 0.1);
+      --cloud-stroke: #9a671f;
+      --security-fill: rgba(153, 58, 52, 0.09);
+      --security-stroke: #9e463f;
+      --messagebus-fill: rgba(182, 70, 27, 0.09);
+      --messagebus-stroke: #ad4b25;
+      --external-fill: rgba(101, 91, 75, 0.09);
+      --external-stroke: #746b5e;
+      --arrow: #8a806f;
+      --arrow-emphasis: #bb4c23;
+      --toolbar-bg: rgba(251, 248, 241, 0.94);
+      --toolbar-border: #c4b9a6;
+      --toolbar-text: #40392f;
+      --toolbar-hover: #fffdf8;
+      --toolbar-menu-bg: #fbf8f1;
+    }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
+      background: var(--bg);
+      min-height: 100vh;
+      padding: 2rem;
+      color: var(--text);
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+html[data-preset="signal-flow"] body {
+      background-image:
+        radial-gradient(circle at 18% -8%, rgba(34, 211, 238, 0.14), transparent 34rem),
+        radial-gradient(circle at 92% 18%, rgba(139, 92, 246, 0.12), transparent 30rem);
+      background-attachment: fixed;
+    }
+html[data-preset="signal-flow"][data-theme="light"] body {
+      background-image:
+        radial-gradient(circle at 18% -8%, rgba(6, 182, 212, 0.12), transparent 34rem),
+        radial-gradient(circle at 92% 18%, rgba(139, 92, 246, 0.08), transparent 30rem);
+    }
+html[data-preset="blueprint"] body {
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 32px 32px;
+      background-position: -1px -1px;
+      background-attachment: fixed;
+    }
+html[data-preset="editorial"] body {
+      background-image:
+        linear-gradient(90deg, transparent 0, transparent 5.4rem, color-mix(in srgb, var(--security-stroke) 18%, transparent) 5.4rem, color-mix(in srgb, var(--security-stroke) 18%, transparent) calc(5.4rem + 1px), transparent calc(5.4rem + 1px)),
+        repeating-linear-gradient(0deg, transparent 0, transparent 31px, color-mix(in srgb, var(--grid) 36%, transparent) 31px, color-mix(in srgb, var(--grid) 36%, transparent) 32px);
+      background-attachment: fixed;
+    }
+/* Gallery/embed mode keeps the generated artifact as the source of truth
+       while presenting only its diagram surface inside a proof card. */
+    html[data-embed="true"] body {
+      min-height: 0;
+      padding: 0;
+      overflow: hidden;
+      background: var(--bg);
+      background-image: none;
+    }
+/* Presentation Stage is a viewer-only layer: it gives the live diagram
+       the viewport while keeping guided views, theme, focus, and exports real.
+       Embed mode wins when both query parameters are present. */
+    html[data-present="true"]:not([data-embed="true"]) body {
+      height: 100dvh;
+      min-height: 0;
+      padding: 1rem;
+      overflow: hidden;
+    }
+html[data-present="true"]:not([data-embed="true"]) #btn-present {
+      border-color: var(--frontend-stroke);
+      color: var(--frontend-stroke);
+    }
+@media (min-width: 768px) and (max-height: 920px) {
+      .header { margin-bottom: 1rem; }
+      .diagram-container { padding: 1rem; }
+      .cards { margin-top: 1rem; }
+      .card { padding: 1rem; }
+    }
+@keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+html[data-preset="editorial"] h1 { font-size: 1.72rem; font-weight: 600; }
+html[data-preset="signal-flow"][data-theme="light"] .diagram-container {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(237, 246, 250, 0.94));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 24px 60px rgba(45, 78, 99, 0.12);
+    }
+/* Motion Governor gives the reader a real static state and gives the
+       strongest semantic action the only motion budget. Atmosphere resets to
+       its authored base instead of freezing mid-cycle. Static artifacts never
+       start a decorative pulse or scan. */
+    html:not([data-motion-capable="true"]) svg[data-animation="trace"] [data-animate] {
+      animation: none !important;
+    }
+svg {
+      width: 100%;
+      min-width: min(900px, 100%);
+      display: block;
+      transform-origin: 0 0;
+      transition: transform 0.18s ease;
+    }
+@keyframes archify-lens-in {
+      from { opacity: 0; transform: translateY(5px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+#btn-reach-upstream {
+      --reach-color: var(--database-stroke);
+      --reach-fill: var(--database-fill);
+    }
+#btn-reach-downstream {
+      --reach-color: var(--backend-stroke);
+      --reach-fill: var(--backend-fill);
+    }
+@keyframes archify-guide-in {
+      from { opacity: 0; transform: translateY(-5px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+svg[data-chapter-handoff] [data-node-id][data-chapter-role="stay"] { opacity: 1; }
+svg[data-chapter-handoff] [data-node-id][data-chapter-role="enter"] { opacity: 0.78; }
+svg[data-chapter-handoff] [data-node-id][data-chapter-role="leave"] { opacity: 0.26; }
+@keyframes archify-chapter-anchor {
+      0% { opacity: 0.35; stroke-dashoffset: 8; }
+      45% { opacity: 1; }
+      100% { opacity: 0.72; stroke-dashoffset: 0; }
+    }
+@keyframes archify-story-caption-in {
+      from { opacity: 0; transform: translateY(3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+@media (min-width: 721px) {
+      html[data-present="true"]:not([data-embed="true"]) .guided-views[data-playing="true"] .guided-view-index,
+      html[data-present="true"]:not([data-embed="true"]) .guided-views[data-playing="true"] .guided-view-beat-link,
+      html[data-present="true"]:not([data-embed="true"]) .guided-views[data-playing="true"] .guided-view-all,
+      html[data-present="true"]:not([data-embed="true"]) .guided-views[data-playing="true"] .guided-view-trail,
+      html[data-present="true"]:not([data-embed="true"]) .guided-views[data-playing="true"] .guided-view-copy > #guided-view-label,
+      html[data-present="true"]:not([data-embed="true"]) .guided-views[data-playing="true"] .guided-view-copy > #guided-view-note { display: none; }
+      html[data-present="true"]:not([data-embed="true"]) .guided-views[data-playing="true"] .guided-story-caption { margin-top: 0.08rem; }
+    }
+html[data-preset="signal-flow"][data-theme="light"] .card {
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(237, 246, 250, 0.9));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 12px 32px rgba(45, 78, 99, 0.08);
+    }
+/* Preserve the one-screen guarantee on ordinary laptop displays. The
+       high-screen expansion above must not trade a fuller canvas for page
+       scrolling at 900–1080px heights. */
+    @media (min-width: 768px) and (max-height: 1100px) {
+      .header { margin-bottom: 1rem; }
+      .diagram-container {
+        padding: 0.875rem;
+        padding-bottom: calc(0.875rem + var(--archify-nav-reserve));
+      }
+      .cards { margin-top: 1rem; }
+      .card { padding: 1rem; }
+    }
+@media (min-width: 768px) and (max-height: 920px) {
+      body { padding-block: 1.25rem; }
+      .header { margin-bottom: 0.875rem; }
+      .cards { margin-top: 0.75rem; }
+      html[data-nav-stage-rail="true"] body { padding-block: 0.375rem; }
+      html[data-nav-stage-rail="true"] .header { margin-bottom: 0.5rem; }
+      html[data-nav-stage-rail="true"] .guided-views { margin-bottom: 0.375rem; }
+      html[data-nav-stage-rail="true"] .diagram-container[data-nav-stage-rail="true"] { padding-top: 0.5rem; }
+      html[data-nav-stage-rail="true"] .cards { margin-top: 0.375rem; }
+    }
+/* ==========================================================
+       Print stylesheet — hide interactive controls, force light,
+       drop the grid so the diagram doesn't waste ink, use landscape
+       so wide diagrams fit, pack summary cards into 2 columns to
+       avoid an orphan card on a trailing page.
+       ========================================================== */
+    @page { size: landscape; margin: 1.5cm; }
+@media print {
+      /* Force the FULL light palette — including component fills/strokes and
+         lane/arrow colors — so printing from dark theme doesn't put neon
+         strokes and translucent dark fills on white paper. */
+      :root, [data-theme="dark"], [data-theme="light"] {
+        --bg: #ffffff;
+        --grid: transparent;
+        --panel: #ffffff;
+        --panel-border: #e2e8f0;
+        --text: #0f172a;
+        --text-muted: #475569;
+        --text-dim: #94a3b8;
+        --text-faint: #64748b;
+        --mask: #ffffff;
+        --lane-fill: rgba(248, 250, 252, 0.65);
+        --lane-stroke: #cbd5e1;
+        --arrow: #94a3b8;
+        --arrow-emphasis: #059669;
+        --frontend-fill:    rgba(34, 211, 238, 0.15);
+        --frontend-stroke:  #0891b2;
+        --backend-fill:     rgba(52, 211, 153, 0.18);
+        --backend-stroke:   #059669;
+        --database-fill:    rgba(167, 139, 250, 0.2);
+        --database-stroke:  #7c3aed;
+        --cloud-fill:       rgba(251, 191, 36, 0.18);
+        --cloud-stroke:     #d97706;
+        --security-fill:    rgba(251, 113, 133, 0.15);
+        --security-stroke:  #e11d48;
+        --messagebus-fill:  rgba(251, 146, 60, 0.15);
+        --messagebus-stroke:#ea580c;
+        --external-fill:    rgba(148, 163, 184, 0.18);
+        --external-stroke:  #64748b;
+      }
+      body { background: #ffffff !important; padding: 0; }
+      .container { max-width: none; }
+      .toolbar, .diagram-nav, .focus-chip, .guided-views, .archify-toast, .no-print { display: none !important; }
+      .chapter-handoff-overlay { display: none !important; }
+      svg [data-node-id][data-chapter-role] { opacity: 1 !important; }
+      svg[data-chapter-preview] [data-node-id],
+      svg[data-chapter-preview] [data-edge-from] { opacity: 1 !important; filter: none !important; }
+      .diagram-container, .card { box-shadow: none; border-color: #e2e8f0; }
+      .diagram-container { --archify-nav-reserve: 0px !important; }
+      html[data-preset="signal-flow"] .diagram-container,
+      html[data-preset="signal-flow"] .card { background: #ffffff; }
+      .cards { grid-template-columns: 1fr 1fr; }
+      /* Ensure elements break sensibly across pages */
+      .card { break-inside: avoid; page-break-inside: avoid; }
+      .diagram-container { break-inside: avoid; page-break-inside: avoid; }
+      .diagram-container svg [data-detail] {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
+      .diagram-container svg [data-detail-anchor] { transform: none !important; }
+      .diagram-container svg[data-lens-active] [data-node-id],
+      .diagram-container svg[data-lens-active] [data-edge-from],
+      .diagram-container svg[data-legend-preview-active] [data-node-id],
+      .diagram-container svg[data-legend-preview-active] [data-edge-from] {
+        opacity: 1 !important;
+        filter: none !important;
+      }
+      [data-legend-bridge-runtime] { display: none !important; }
+      .semantic-lens-overlay { display: none !important; }
+      .relationship-hit-overlay { display: none !important; }
+      .relationship-pulse-overlay { display: none !important; }
+      .route-probe-overlay, .route-journey-overlay { display: none !important; }
+      .story-trail-overlay,
+      .story-carrier-overlay { display: none !important; }
+      .diagram-container svg[data-focus-active] [data-node-id],
+      .diagram-container svg[data-focus-active] [data-edge-from],
+      .diagram-container svg[data-reach-active] [data-node-id],
+      .diagram-container svg[data-reach-active] [data-edge-from],
+      .diagram-container svg[data-story-beat] [data-story-step],
+      .diagram-container svg[data-story-beat] [data-edge-from][data-story-beat-step],
+      .diagram-container svg[data-route-active] [data-node-id],
+      .diagram-container svg[data-route-active] [data-edge-from] {
+        opacity: 1 !important;
+        filter: none !important;
+        animation: none !important;
+      }
+      h1, .subtitle { color: #0f172a; }
+    }
+[data-theme="light"] #theme-icon {
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cg fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='3.1'/%3E%3Cpath d='M10 2.2v1.4M10 16.4v1.4M2.2 10h1.4M16.4 10h1.4M4.5 4.5l1 1M14.5 14.5l1 1M15.5 4.5l-1 1M5.5 14.5l-1 1'/%3E%3C/g%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cg fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='3.1'/%3E%3Cpath d='M10 2.2v1.4M10 16.4v1.4M2.2 10h1.4M16.4 10h1.4M4.5 4.5l1 1M14.5 14.5l1 1M15.5 4.5l-1 1M5.5 14.5l-1 1'/%3E%3C/g%3E%3C/svg%3E");
+    }
+[data-theme="dark"] #theme-icon {
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M15.2 12.7A6.3 6.3 0 017.3 4.8a6.3 6.3 0 107.9 7.9Z' fill='none' stroke='black' stroke-width='1.7' stroke-linejoin='round'/%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M15.2 12.7A6.3 6.3 0 017.3 4.8a6.3 6.3 0 107.9 7.9Z' fill='none' stroke='black' stroke-width='1.7' stroke-linejoin='round'/%3E%3C/svg%3E");
+    }
+#btn-present[aria-pressed="false"] #present-icon {
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M7.2 3.2h-4v4M12.8 3.2h4v4M7.2 16.8h-4v-4M12.8 16.8h4v-4' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M7.2 3.2h-4v4M12.8 3.2h4v4M7.2 16.8h-4v-4M12.8 16.8h4v-4' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
+    }
+#btn-present[aria-pressed="true"] #present-icon {
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M7.2 7.2h-4v-4M12.8 7.2h4v-4M7.2 12.8h-4v4M12.8 12.8h4v4' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M7.2 7.2h-4v-4M12.8 7.2h4v-4M7.2 12.8h-4v4M12.8 12.8h4v4' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
+    }
+@keyframes toolbar-menu-in {
+      from { opacity: 0; transform: translateY(-0.25rem) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+@media (max-width: 720px) {
+      body { padding: 1rem; }
+      .toolbar .preset-menu,
+      .toolbar .export-menu {
+        position: fixed;
+        top: 4.5rem;
+        right: 1rem;
+        left: 1rem;
+        width: auto;
+        max-width: none;
+      }
+      .toolbar {
+        position: relative;
+        justify-content: flex-end;
+        width: max-content;
+        max-width: 100%;
+        margin-left: auto;
+        margin-bottom: 1rem;
+      }
+      .header { margin-bottom: 1.25rem; padding-right: 0; }
+      html[data-preset="signal-flow"] .header,
+      html[data-preset="blueprint"] .header,
+      html[data-preset="editorial"] .header { padding-right: 0; }
+      .header-row {
+        gap: 0.75rem;
+        align-items: flex-start;
+      }
+      html[data-preset="signal-flow"] .header-row,
+      html[data-preset="blueprint"] .header-row,
+      html[data-preset="editorial"] .header-row { flex-wrap: wrap; }
+      html[data-preset="signal-flow"] .header-row::after {
+        margin-left: 0;
+        order: 3;
+      }
+      html[data-preset="blueprint"] .header-row::after {
+        margin-left: 0;
+        order: 3;
+      }
+      html[data-preset="editorial"] .header-row::after {
+        margin-left: 0;
+        order: 3;
+      }
+      h1 {
+        font-size: 1.25rem;
+        line-height: 1.25;
+      }
+      .subtitle {
+        margin-left: 0;
+        font-size: 0.8125rem;
+        line-height: 1.55;
+      }
+      .diagram-container {
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+      }
+      html:not([data-embed="true"]) .diagram-container {
+        padding: 0.75rem 0.75rem 4.25rem;
+      }
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] {
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+        scroll-behavior: smooth;
+      }
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] > svg {
+        min-width: 720px;
+      }
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] .diagram-nav,
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] .overview-map,
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] .focus-chip,
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] .route-probe,
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] .semantic-lens,
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] .diagram-guide,
+      html:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] .node-finder {
+        transform: translateX(var(--archify-scroll-x, 0px));
+      }
+      .diagram-nav { right: 0.5rem; bottom: 0.5rem; }
+      .diagram-nav button {
+        min-width: 2.75rem;
+        height: 2.75rem;
+      }
+      .diagram-nav [data-view="reset"] { min-width: 3.75rem; }
+      .diagram-nav [data-view="reset"][data-detail-visible] { min-width: 4.35rem; }
+      .overview-map {
+        right: 0.5rem;
+        bottom: 3.7rem;
+        width: min(10.25rem, calc(100% - 1rem));
+      }
+      .overview-map[data-docked="true"] {
+        right: var(--archify-radar-right, 0.5rem);
+        top: var(--archify-radar-top, 0.5rem);
+        bottom: auto;
+        transform: none !important;
+      }
+      .overview-map[data-docked="true"][data-dock-side="left"] {
+        right: auto;
+        left: var(--archify-radar-left, 0.5rem);
+      }
+      .overview-map-surface { height: 4rem; }
+      .overview-map-feedback { right: 0.5rem; bottom: 3.7rem; }
+      .semantic-lens {
+        right: 0.5rem;
+        bottom: 3.7rem;
+        width: calc(100% - 1rem);
+        max-height: calc(100% - 4.2rem);
+      }
+      .semantic-lens[data-dock-side] { left: auto; right: 0.5rem; }
+      .semantic-lens-kinds { max-height: min(12rem, 34vh); }
+      .focus-chip {
+        left: 0.5rem;
+        top: 0.5rem;
+        width: calc(100% - 1rem);
+        max-width: none;
+      }
+      .relationship-lens-list { max-height: min(12rem, 38vh); }
+      .relationship-lens-actions #btn-focus-relations { display: block; color: var(--database-stroke); }
+      .focus-chip:not([data-relations-expanded="true"]) .relationship-lens-head { border-bottom-color: transparent; }
+      .focus-chip:not([data-relations-expanded="true"]) .relationship-lens-list { display: none; }
+      /* While a mobile reader previews one relationship, turn the full Lens
+         into a compact peek card. This keeps the exact source and target on
+         canvas instead of covering them with a long, scrollable list. */
+      .focus-chip[data-relationship-previewing="true"] .relationship-lens-list {
+        max-height: none;
+        padding: 0.35rem;
+        overflow: hidden;
+      }
+      .focus-chip[data-relationship-previewing="true"] .relationship-lens-group { margin: 0; }
+      .focus-chip[data-relationship-previewing="true"] .relationship-lens-group-title,
+      .focus-chip[data-relationship-previewing="true"] .relationship-lens-row:not([data-preview-active="true"]) {
+        display: none;
+      }
+      .node-finder {
+        top: 0.5rem;
+        left: 0.5rem;
+        width: min(22rem, calc(100% - 1rem));
+        max-height: calc(100% - 1rem);
+      }
+      .diagram-guide {
+        top: 0.5rem;
+        right: 0.5rem;
+        left: 0.5rem;
+        width: auto;
+        max-height: calc(100% - 1rem);
+      }
+      .diagram-guide-head { padding: 0.62rem 0.7rem 0.52rem; }
+      .diagram-guide-stats { padding: 0.42rem 0.7rem; }
+      .diagram-guide-actions {
+        grid-template-columns: 1fr;
+        gap: 0.28rem;
+        padding: 0.42rem;
+      }
+      .diagram-guide-action {
+        min-height: 3.1rem;
+        padding: 0.42rem 0.48rem;
+      }
+      .diagram-guide-action small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .diagram-guide-index {
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+      .diagram-guide-shortcuts { padding: 0.46rem 0.7rem 0.52rem; }
+      .diagram-guide-action[data-guide-action="present"] { grid-column: auto; }
+      .route-probe[data-guide-open="true"] {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .node-finder-results { max-height: min(16rem, 38vh); }
+      .route-probe {
+        left: 0.5rem;
+        bottom: 3.7rem;
+        width: calc(100% - 1rem);
+        min-width: 0;
+      }
+      .route-probe[data-route-dock="top"] {
+        top: 0.5rem;
+        bottom: auto;
+      }
+      .route-probe[data-finder-open="true"] {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .route-probe-head { padding: 0.45rem 0.48rem 0.38rem; }
+      .route-probe-path { padding: 0.35rem 0.48rem 0.2rem; }
+      .route-probe-node { min-height: 2.75rem !important; }
+      .route-journey-controls {
+        grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem minmax(0, 1fr);
+        padding: 0.08rem 0.48rem 0.32rem;
+      }
+      .route-journey-controls button { min-height: 2.75rem; }
+      .route-probe-status { padding: 0.05rem 0.48rem 0.38rem; }
+      .route-probe-node { max-width: 7.5rem; }
+      .guided-views {
+        grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+        gap: 0.2rem;
+        padding: 0.25rem;
+      }
+      .guided-view-actions {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .guided-views > #guided-view-prev,
+      .guided-views > #guided-view-next {
+        align-self: center;
+        height: 2.75rem;
+      }
+      .guided-view-play,
+      .guided-view-all,
+      .guided-view-beat-link { min-height: 2.75rem; }
+      .guided-view-copy small { white-space: normal; }
+      .guided-story-caption { padding: 0.32rem 0.45rem; }
+      .guided-story-caption-index { min-width: 2.9rem; padding-right: 0.42rem; }
+      .guided-story-caption strong,
+      .guided-story-caption small { white-space: normal; }
+      .guided-story-caption-next { display: none; }
+      .guided-view-trail { min-height: 2rem; }
+      .guided-view-trail .guided-view-stop {
+        min-height: 2rem;
+        padding: 0.22rem 0.42rem 0.22rem 0.28rem;
+      }
+      .guided-view-handoff { max-width: min(9rem, 32vw); }
+      .guided-view-index { padding-top: 0.35rem; }
+      .guided-view-chapters {
+        gap: 0.35rem;
+        scroll-padding-inline: 0.2rem;
+      }
+      .guided-view-chapters li {
+        flex: 0 0 min(14rem, 78vw);
+        min-width: 0;
+      }
+      .guided-view-chapter { min-height: 2.75rem; }
+      .guided-views[data-active-view="all"] {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.2rem;
+        padding: 0.25rem;
+      }
+      .guided-views[data-active-view="all"] .guided-view-copy {
+        grid-column: 1;
+        grid-row: 1;
+      }
+      .guided-views[data-active-view="all"] .guided-view-actions {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .guided-views[data-active-view="all"] .guided-view-play {
+        min-width: 6rem !important;
+        min-height: 2.75rem;
+      }
+      .guided-views[data-active-view="all"] .guided-view-index {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        padding: 0.3rem 0.08rem 0;
+        border-top: 1px solid color-mix(in srgb, var(--toolbar-border) 72%, transparent);
+        border-left: 0;
+      }
+      html[data-embed="true"][data-share-playback="true"] .share-chapter-cue:not([hidden]),
+      html[data-embed="true"][data-share-moment="true"] .share-chapter-cue:not([hidden]) {
+        top: 0.5rem;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 0.28rem 0.55rem;
+        width: calc(100% - 1rem);
+        min-height: 0;
+        padding: 0.45rem 0.55rem 0.55rem;
+      }
+      html[data-embed="true"][data-share-playback="true"] .diagram-container {
+        padding-top: 4.25rem;
+      }
+      html[data-embed="true"][data-share-moment="true"] .diagram-container {
+        padding-top: 4.25rem;
+      }
+      .share-chapter-index {
+        min-width: 4.4rem;
+        padding-right: 0.5rem;
+      }
+      .share-chapter-copy small { font-size: 0.46rem; }
+      .share-chapter-route {
+        grid-column: 1 / -1;
+        font-size: 0.5rem;
+        text-align: left;
+      }
+      .cards {
+        grid-template-columns: 1fr;
+        margin-top: 1rem;
+      }
+      html[data-present="true"]:not([data-embed="true"]) body { padding: 0.5rem; }
+      html[data-present="true"]:not([data-embed="true"]) .container {
+        gap: 0.5rem;
+        height: calc(100dvh - 1rem);
+      }
+      html[data-present="true"]:not([data-embed="true"]) .toolbar {
+        position: fixed;
+        top: 0.5rem;
+        right: 0.5rem;
+        margin: 0;
+        gap: 0.25rem;
+      }
+      html[data-present="true"]:not([data-embed="true"]) .toolbar button {
+        min-height: 2.75rem;
+        padding: 0.42rem 0.58rem;
+      }
+      html[data-present="true"]:not([data-embed="true"]) .header {
+        min-height: 2.25rem;
+        padding: 3.5rem 0 0;
+      }
+      html[data-present="true"]:not([data-embed="true"]) .header-row {
+        min-height: 2.25rem;
+        margin: 0;
+        align-items: center;
+        flex-wrap: nowrap;
+      }
+      html[data-present="true"]:not([data-embed="true"]) .header-row::after,
+      html[data-present="true"]:not([data-embed="true"]) .pulse-dot,
+      html[data-present="true"]:not([data-embed="true"]) .subtitle { display: none; }
+      html[data-present="true"]:not([data-embed="true"]) h1 {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        font-size: 0.875rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      html[data-present="true"]:not([data-embed="true"]) .guided-views {
+        padding: 0.2rem;
+      }
+      html[data-present="true"]:not([data-embed="true"]) .guided-view-copy small { display: none; }
+      html[data-present="true"]:not([data-embed="true"]) .guided-story-caption small { display: block; }
+      html[data-present="true"]:not([data-embed="true"]) .diagram-container { padding: 0.5rem 0.5rem 3.75rem; }
+      html[data-present="true"]:not([data-embed="true"]) .diagram-container[data-wide-diagram="true"] > svg {
+        width: 720px;
+        height: auto;
+        min-width: 720px;
+      }
+    }
+@media (max-width: 420px) {
+      .export-menu-section { grid-template-columns: 1fr; }
+      .export-menu-heading,
+      .toolbar .export-menu button[data-format="share-card"],
+      .toolbar .export-menu button[data-action="route-share-card"],
+      .toolbar .export-menu button[data-action="reach-share-card"] { grid-column: 1; }
+    }
+@media (prefers-reduced-motion: reduce) {
+      .guided-story-caption { animation: none !important; }
+      .toolbar .preset-menu.open,
+      .toolbar .export-menu.open { animation: none; }
+      .toolbar-chevron { transition: none; }
+    }
+@media (max-width: 360px) {
+      .toolbar { gap: 0.25rem; }
+      .toolbar button { padding-right: 0.58rem; padding-left: 0.58rem; }
+      .toolbar #btn-motion { min-width: 4.4rem; padding-right: 0.58rem; padding-left: 0.58rem; }
+      #theme-label, #preset-label, #present-label { display: none; }
+      .guided-view-handoff { max-width: 6.5rem; }
+    }
+/* ==========================================================
+       SVG SEMANTIC CLASSES — use these instead of inline fill/stroke
+       ========================================================== */
+    .c-grid       { stroke: var(--grid); fill: none; }
+.c-mask       { fill: var(--mask); stroke: none; }
+.c-security   { fill: var(--security-fill);   stroke: var(--security-stroke); }
+.c-external   { fill: var(--external-fill);   stroke: var(--external-stroke); }
+/* Text helpers */
+    .t-primary { fill: var(--text); }
+.t-muted   { fill: var(--text-muted); }
+.t-dim     { fill: var(--text-dim); }
+.t-security   { fill: var(--security-stroke); }
+.t-messagebus { fill: var(--messagebus-stroke); }
+/* Semantic Sigils are small authored role stamps, not icons from a brand
+       pack and not viewer controls. Prefix selectors with svg so the canonical
+       export's SVG-only stylesheet collector keeps them automatically. */
+    svg .semantic-sigil {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.35;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.76;
+      pointer-events: none;
+    }
+svg .semantic-sigil > * { vector-effect: non-scaling-stroke; }
+svg .semantic-sigil .sigil-fill { fill: currentColor; stroke: none; }
+svg .s-security   { color: var(--security-stroke); }
+svg .s-external   { color: var(--external-stroke); }
+/* Reading Depth is a viewer-only level-of-detail layer. MAP preserves the
+       authored structure and primary labels, READ restores relationship labels
+       and node context, and FULL restores tags and fine annotations. Semantic
+       intent can reveal the relevant detail without moving any geometry. */
+    svg [data-detail] { transition: opacity 160ms ease; }
+svg [data-detail-anchor] {
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: transform 160ms ease;
+    }
+/* Focus, lens, preview, route, and story states are stronger reader intent than
+       the global zoom level. Reveal only their exact semantic matches. */
+    svg[data-focus-active] [data-focus-match][data-detail],
+    svg[data-focus-active] [data-focus-match] [data-detail],
+    svg[data-reach-active] [data-reach-match][data-detail],
+    svg[data-reach-active] [data-reach-match] [data-detail],
+    svg[data-lens-active] [data-lens-match][data-detail],
+    svg[data-lens-active] [data-lens-match] [data-detail],
+    svg[data-legend-preview-active] [data-legend-preview-match][data-detail],
+    svg[data-legend-preview-active] [data-legend-preview-match] [data-detail],
+    svg[data-intent-trace-active] [data-intent-trace-match][data-detail],
+    svg[data-intent-trace-active] [data-intent-trace-match] [data-detail],
+    svg[data-route-active] [data-route-match][data-detail],
+    svg[data-route-active] [data-route-match] [data-detail],
+    svg[data-story-active] [data-story-step][data-detail],
+    svg[data-story-active] [data-story-step] [data-detail],
+    svg[data-relationship-preview-active] [data-relationship-preview][data-detail],
+    svg[data-relationship-preview-active] [data-relationship-preview] [data-detail],
+    svg [data-node-id]:hover [data-detail],
+    svg [data-node-id]:focus-visible [data-detail] {
+      opacity: 1;
+      pointer-events: auto;
+    }
+svg[data-focus-active] [data-focus-match] [data-detail-anchor],
+    svg[data-reach-active] [data-reach-match] [data-detail-anchor],
+    svg[data-lens-active] [data-lens-match] [data-detail-anchor],
+    svg[data-legend-preview-active] [data-legend-preview-match] [data-detail-anchor],
+    svg[data-intent-trace-active] [data-intent-trace-match] [data-detail-anchor],
+    svg[data-route-active] [data-route-match] [data-detail-anchor],
+    svg[data-story-active] [data-story-step] [data-detail-anchor],
+    svg [data-node-id]:hover [data-detail-anchor],
+    svg [data-node-id]:focus-visible [data-detail-anchor] { transform: none; }
+/* Arrows */
+    .a-default   { stroke: var(--arrow); fill: none; }
+.a-security  { stroke: var(--security-stroke); fill: none; stroke-dasharray: 5,5; }
+.a-dashed    { stroke: var(--database-stroke); fill: none; stroke-dasharray: 4,4; }
+/* Arrowhead markers reference these */
+    .m-default   { fill: var(--arrow); }
+.m-emphasis  { fill: var(--arrow-emphasis); }
+.m-security  { fill: var(--security-stroke); }
+.m-dashed    { fill: var(--database-stroke); }
+/* Stable semantic exploration hooks emitted by every renderer. */
+    svg [data-node-id] {
+      cursor: pointer;
+      transition: opacity 0.18s ease, filter 0.18s ease;
+    }
+svg [data-edge-from] { transition: opacity 0.18s ease, filter 0.18s ease; }
+svg [data-node-id]:hover,
+    svg [data-node-id]:focus-visible {
+      filter: drop-shadow(0 0 7px var(--frontend-stroke));
+      outline: none;
+    }
+svg [data-legend-kind][role="button"] { cursor: pointer; }
+svg [data-legend-kind]:focus { outline: none; }
+svg [data-legend-hit] {
+      fill: transparent;
+      stroke: transparent;
+      stroke-width: 1.4;
+      pointer-events: all;
+      vector-effect: non-scaling-stroke;
+      transition: stroke 150ms ease, stroke-width 150ms ease, filter 150ms ease;
+    }
+svg [data-legend-count-badge] { pointer-events: none; }
+svg [data-legend-count-badge] rect {
+      fill: var(--mask);
+      stroke: var(--panel-border);
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+svg [data-legend-count-badge] text {
+      fill: var(--text-muted);
+      font-size: 8px;
+      font-weight: 700;
+      text-anchor: middle;
+    }
+svg [data-legend-kind][role="button"]:hover [data-legend-hit] {
+      stroke: color-mix(in srgb, var(--database-stroke) 58%, transparent);
+    }
+svg [data-legend-kind][role="button"]:focus-visible [data-legend-hit] {
+      stroke: var(--frontend-stroke);
+      stroke-width: 1.8;
+      filter: drop-shadow(0 0 3px var(--frontend-stroke));
+    }
+svg [data-legend-kind][data-legend-selected] [data-legend-hit] {
+      stroke: var(--database-stroke);
+      stroke-width: 2.2;
+      stroke-dasharray: 3 2;
+    }
+svg [data-legend-kind][data-legend-selected] [data-legend-count-badge] rect {
+      stroke: var(--database-stroke);
+      stroke-width: 1.8;
+    }
+svg [data-legend-kind][data-legend-zero] { opacity: 0.44; }
+svg[data-preset="signal-flow"] [data-legend-kind][data-legend-selected] [data-legend-hit] {
+      filter: drop-shadow(0 0 4px var(--database-stroke));
+    }
+svg[data-preset="blueprint"] [data-legend-hit],
+    svg[data-preset="blueprint"] [data-legend-count-badge] rect { rx: 0; filter: none; }
+svg[data-legend-preview-active] [data-node-id],
+    svg[data-legend-preview-active] [data-edge-from] { opacity: 0.11; }
+svg[data-legend-preview-active] [data-legend-preview-match] { opacity: 1; }
+svg[data-legend-preview-active] [data-legend-preview-peer] { opacity: 0.62; }
+svg[data-legend-preview-active] [data-legend-preview-selected] {
+      filter: drop-shadow(0 0 8px var(--database-stroke));
+    }
+svg[data-lens-active] [data-node-id],
+    svg[data-lens-active] [data-edge-from] { opacity: 0.11; }
+svg[data-lens-active] [data-lens-match] { opacity: 1; }
+svg[data-lens-active] [data-lens-peer] { opacity: 0.62; }
+svg[data-lens-active] [data-lens-selected] {
+      filter: drop-shadow(0 0 10px var(--database-stroke));
+    }
+svg[data-focus-active] [data-node-id],
+    svg[data-focus-active] [data-edge-from] { opacity: 0.13; }
+svg[data-focus-active] [data-focus-match] { opacity: 1; }
+svg[data-focus-active] [data-focus-selected] {
+      filter: drop-shadow(0 0 10px var(--frontend-stroke));
+    }
+/* Authored Reachability is a bounded graph query over the relationships
+       already present in the artifact. Upstream walks incoming edges;
+       downstream walks outgoing edges. It never claims runtime causality and
+       changes only viewer emphasis, not canonical geometry or export bytes. */
+    svg[data-reach-active] [data-node-id],
+    svg[data-reach-active] [data-edge-from] { opacity: 0.09; }
+svg[data-reach-active] [data-reach-match] { opacity: 1; }
+svg[data-reach-active="upstream"] [data-reach-origin] {
+      filter: drop-shadow(0 0 11px var(--database-stroke));
+    }
+svg[data-reach-active="downstream"] [data-reach-origin] {
+      filter: drop-shadow(0 0 11px var(--backend-stroke));
+    }
+svg[data-reach-active="upstream"] [data-edge-from][data-reach-match] {
+      filter: drop-shadow(0 0 4px color-mix(in srgb, var(--database-stroke) 72%, transparent));
+    }
+svg[data-reach-active="downstream"] [data-edge-from][data-reach-match] {
+      filter: drop-shadow(0 0 4px color-mix(in srgb, var(--backend-stroke) 72%, transparent));
+    }
+svg[data-preset="blueprint"][data-reach-active] [data-reach-origin],
+    svg[data-preset="blueprint"][data-reach-active] [data-edge-from][data-reach-match] {
+      filter: none;
+    }
+svg[data-relationship-direct-active] [data-node-id],
+    svg[data-relationship-direct-active] [data-edge-from] { opacity: 0.16; }
+svg[data-relationship-direct-active] [data-relationship-preview],
+    svg[data-relationship-direct-active] [data-relationship-preview-node] { opacity: 1; }
+@media (hover: none), (pointer: coarse) {
+      .relationship-hit-rail { stroke-width: 24; }
+    }
+/* Relationship Preview is temporary exploration state layered on top of
+       neighborhood focus. It changes emphasis only; exported geometry and the
+       relationship's original solid/dashed visual language stay untouched. */
+    svg[data-relationship-preview-active] [data-focus-match] { opacity: 0.18; }
+svg[data-relationship-preview-active] [data-relationship-preview],
+    svg[data-relationship-preview-active] [data-relationship-preview-node] { opacity: 1; }
+svg[data-relationship-preview-active] [data-relationship-preview] {
+      filter: drop-shadow(0 0 5px var(--arrow-emphasis));
+    }
+svg[data-relationship-preview-active] [data-relationship-preview] path,
+    svg[data-relationship-preview-active] path[data-relationship-preview],
+    svg[data-relationship-preview-active] [data-relationship-preview] line,
+    svg[data-relationship-preview-active] line[data-relationship-preview],
+    svg[data-relationship-preview-active] [data-relationship-preview] polyline,
+    svg[data-relationship-preview-active] polyline[data-relationship-preview] {
+      stroke-width: 2.75;
+    }
+svg[data-relationship-preview-active] [data-relationship-preview-source] {
+      filter: drop-shadow(0 0 7px var(--frontend-stroke));
+    }
+svg[data-relationship-preview-active] [data-relationship-preview-target] {
+      filter: drop-shadow(0 0 7px var(--database-stroke));
+    }
+/* Intent Trace is a temporary, pre-click exploration layer. Related
+       topology stays readable while a short viewer-only signal runs over
+       cloned edge geometry; the authored edge remains untouched underneath. */
+    svg[data-intent-trace-active] [data-node-id],
+    svg[data-intent-trace-active] [data-edge-from] { opacity: 0.2; }
+svg[data-intent-trace-active] [data-intent-trace-match] { opacity: 1; }
+svg[data-intent-trace-active] [data-intent-trace-selected] {
+      filter: drop-shadow(0 0 10px var(--frontend-stroke));
+    }
+/* Route Probe separates a durable two-point query from selection and
+       one-hop hover. Only the chosen shortest directed path stays prominent;
+       the traveling signal is cloned viewer geometry and never authored SVG. */
+    svg[data-route-picking="target"] [data-node-id] { opacity: 0.24; }
+svg[data-route-picking="target"] [data-route-candidate],
+    svg[data-route-picking="target"] [data-route-start] { opacity: 1; }
+svg[data-route-picking] [data-node-id] { cursor: crosshair; }
+svg[data-route-picking] [data-route-start] {
+      filter: drop-shadow(0 0 10px var(--frontend-stroke));
+    }
+svg[data-route-active] [data-node-id],
+    svg[data-route-active] [data-edge-from] { opacity: 0.11; }
+svg[data-route-active] [data-route-match] { opacity: 1; }
+svg[data-route-active] [data-route-start] {
+      filter: drop-shadow(0 0 11px var(--frontend-stroke));
+    }
+svg[data-route-active] [data-route-end] {
+      filter: drop-shadow(0 0 11px var(--security-stroke));
+    }
+svg[data-route-active] [data-route-step]:not([data-route-start]):not([data-route-end]) {
+      filter: drop-shadow(0 0 7px var(--backend-stroke));
+    }
+svg[data-route-journey] [data-route-match][data-route-journey-state="past"] { opacity: 0.62; }
+svg[data-route-journey] [data-route-match][data-route-journey-state="future"] { opacity: 0.34; }
+svg[data-route-journey] [data-route-match][data-route-journey-state="current"] { opacity: 1; }
+svg[data-route-journey] [data-node-id][data-route-journey-current] {
+      filter: drop-shadow(0 0 10px var(--backend-stroke));
+    }
+svg[data-route-journey] [data-edge-from][data-route-journey-current] {
+      opacity: 1;
+      filter: drop-shadow(0 0 6px var(--backend-stroke));
+    }
+svg[data-preset="editorial"] .c-grid {
+      stroke-dasharray: 1 4;
+      opacity: 0.48;
+    }
+svg[data-preset="editorial"] [data-node-id]:hover,
+    svg[data-preset="editorial"] [data-node-id]:focus-visible,
+    svg[data-preset="editorial"][data-focus-active] [data-focus-selected] {
+      filter: drop-shadow(0 2px 2px color-mix(in srgb, var(--text) 18%, transparent));
+    }
+svg[data-preset="blueprint"] .c-grid {
+      stroke-dasharray: 1 3;
+      opacity: 0.78;
+    }
+svg[data-preset="blueprint"] .c-security-group,
+    svg[data-preset="blueprint"] .c-lane { stroke-dasharray: 7 3; }
+svg[data-preset="blueprint"] [data-node-id]:hover,
+    svg[data-preset="blueprint"] [data-node-id]:focus-visible {
+      filter: drop-shadow(0 0 3px var(--frontend-stroke));
+    }
+svg[data-preset="blueprint"][data-focus-active] [data-focus-selected] {
+      filter: drop-shadow(0 0 3px var(--frontend-stroke));
+    }
+svg[data-preset="blueprint"][data-focus-active][data-reach-active] [data-focus-selected][data-reach-origin] {
+      filter: none;
+    }
+svg[data-preset="blueprint"][data-relationship-preview-active] [data-relationship-preview],
+    svg[data-preset="blueprint"][data-relationship-preview-active] [data-relationship-preview-source],
+    svg[data-preset="blueprint"][data-relationship-preview-active] [data-relationship-preview-target] {
+      filter: drop-shadow(0 0 3px var(--frontend-stroke));
+    }
+svg[data-story-beat] [data-story-step] {
+      opacity: 0.22;
+      filter: saturate(0.42);
+      transition: opacity 180ms ease, filter 180ms ease;
+    }
+svg[data-story-beat] [data-story-step][data-story-beat-state="past"] {
+      opacity: 0.72;
+      filter: saturate(0.82);
+    }
+svg[data-story-beat] [data-story-step][data-story-beat-state="next"] {
+      opacity: 0.5;
+      filter: saturate(0.66);
+    }
+svg[data-story-beat] [data-story-step][data-story-beat-state="active"] {
+      opacity: 1;
+      filter: drop-shadow(0 0 7px var(--frontend-stroke));
+      animation: archify-story-beat-node 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+svg[data-story-beat] [data-edge-from][data-story-beat-step] {
+      opacity: 0.16;
+      transition: opacity 160ms ease;
+    }
+svg[data-story-beat] [data-edge-from][data-story-beat-step][data-story-beat-state="past"] { opacity: 0.58; }
+svg[data-story-beat] [data-edge-from][data-story-beat-step][data-story-beat-state="next"] { opacity: 0.34; }
+svg[data-story-beat] [data-edge-from][data-story-beat-step][data-story-beat-state="active"] { opacity: 1; }
+svg[data-preset="blueprint"][data-story-beat] [data-story-step][data-story-beat-state="active"] {
+      filter: none;
+      animation: none;
+    }
+svg[data-preset="editorial"][data-story-beat] [data-story-step][data-story-beat-state="active"] {
+      filter: drop-shadow(0 2px 2px color-mix(in srgb, var(--text) 16%, transparent));
+    }
+/* Chapter Delta Preview is a static, pre-commit comparison between two
+       chapter focus sets. Symbols in the rail carry the meaning without color;
+       these SVG rules only make exact stable-ID membership easier to scan. */
+    svg[data-chapter-preview] [data-node-id],
+    svg[data-chapter-preview] [data-edge-from] {
+      opacity: 0.1 !important;
+      filter: none !important;
+      transition: none !important;
+    }
+svg[data-chapter-preview] [data-node-id][data-chapter-preview-role="stay"] {
+      opacity: 0.76 !important;
+      filter: saturate(0.7) !important;
+    }
+svg[data-chapter-preview] [data-node-id][data-chapter-preview-role="enter"] {
+      opacity: 1 !important;
+      filter: saturate(1.2) !important;
+    }
+svg[data-chapter-preview] [data-node-id][data-chapter-preview-role="leave"] {
+      opacity: 0.28 !important;
+      filter: grayscale(0.72) !important;
+    }
+svg[data-preset="blueprint"][data-chapter-preview] [data-node-id] { filter: none !important; }
+.c-lane           { fill: var(--lane-fill); stroke: var(--lane-stroke); stroke-dasharray: 6,6; }
+html[data-ambient-motion="running"] svg[data-animation="trace"] [data-animate="node"] {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: archify-node-pulse 3.6s ease-in-out 1;
+      animation-delay: calc(var(--step, 0) * 160ms);
+    }
+svg[data-preset="signal-flow"][data-animation="trace"] [data-animate="edge"] {
+      stroke-linecap: round;
+      filter: drop-shadow(0 0 3px var(--arrow-emphasis));
+      animation-duration: 1.75s;
+    }
+svg[data-preset="signal-flow"][data-animation="trace"] [data-animate="node"] {
+      animation-duration: 3.1s;
+    }
+svg[data-preset="blueprint"][data-animation="trace"] [data-animate="edge"] {
+      stroke-linecap: square;
+      filter: none;
+      animation-duration: 2.15s;
+    }
+svg[data-preset="blueprint"][data-animation="trace"] [data-animate="node"] {
+      animation-name: archify-blueprint-node-pulse;
+      animation-duration: 3.8s;
+    }
+svg[data-preset="editorial"][data-animation="trace"] [data-animate="edge"] {
+      filter: none;
+      animation-duration: 2.2s;
+    }
+svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] {
+      animation-name: archify-editorial-node-pulse;
+      animation-duration: 3.5s;
+    }
+@keyframes archify-edge-flow {
+      0% { stroke-dasharray: 10 8; stroke-dashoffset: 54; opacity: 0.42; }
+      88% { stroke-dasharray: 10 8; stroke-dashoffset: 0; opacity: 1; }
+      99.9% { stroke-dasharray: 10 8; stroke-dashoffset: 0; opacity: 1; }
+      100% { stroke-dashoffset: 0; opacity: 1; }
+    }
+@keyframes archify-node-pulse {
+      0%, 72%, 100% { filter: none; stroke-width: 1.5; }
+      18%, 36% {
+        filter: drop-shadow(0 0 8px var(--arrow-emphasis));
+        stroke-width: 2.4;
+      }
+    }
+@keyframes archify-blueprint-node-pulse {
+      0%, 72%, 100% { opacity: 1; filter: none; }
+      18%, 36% { opacity: 0.72; filter: drop-shadow(0 0 2px var(--frontend-stroke)); }
+    }
+@keyframes archify-editorial-node-pulse {
+      0%, 72%, 100% { opacity: 1; filter: none; }
+      18%, 36% { opacity: 0.78; filter: drop-shadow(0 2px 2px color-mix(in srgb, var(--text) 18%, transparent)); }
+    }
+@keyframes archify-signal-scan {
+      0%, 18% { opacity: 1; transform: translateX(-70%); }
+      70% { opacity: 1; transform: translateX(70%); }
+      100% { opacity: 0; transform: translateX(70%); }
+    }
+@keyframes archify-radar-live {
+      0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--backend-stroke) 52%, transparent); }
+      55%, 100% { box-shadow: 0 0 0 0.32rem transparent; }
+    }
+@keyframes archify-guided-progress {
+      from { transform: scaleX(var(--guided-progress-start, 0)); }
+      to { transform: scaleX(1); }
+    }
+@keyframes archify-story-flow {
+      to { stroke-dashoffset: 0; }
+    }
+@keyframes archify-intent-trace-flow {
+      0% { opacity: 0.28; stroke-dashoffset: 0; }
+      12%, 78% { opacity: 0.94; }
+      100% { opacity: 0; stroke-dashoffset: -1; }
+    }
+@keyframes archify-route-probe-flow {
+      0% { stroke-dashoffset: 0; opacity: 0.96; }
+      78% { stroke-dashoffset: -1; opacity: 0.96; }
+      100% { stroke-dasharray: none; stroke-dashoffset: 0; opacity: 0.58; }
+    }
+@keyframes archify-route-journey-flow {
+      0% { opacity: 0.16; stroke-dashoffset: 0; }
+      14%, 76% { opacity: 1; }
+      100% { opacity: 0; stroke-dashoffset: -1; }
+    }
+@keyframes archify-semantic-lens-flow {
+      0% { opacity: 0.2; stroke-dashoffset: 0; }
+      12%, 78% { opacity: 0.9; }
+      100% { opacity: 0; stroke-dashoffset: -1; }
+    }
+@keyframes archify-relationship-pulse {
+      0% { opacity: 0.18; stroke-dashoffset: 0; }
+      10%, 76% { opacity: 0.98; }
+      100% { opacity: 0; stroke-dashoffset: -1; }
+    }
+@keyframes archify-relationship-token-life {
+      0%, 7% { opacity: 0; }
+      13%, 82% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+@keyframes archify-story-beat-node {
+      from { opacity: 0.48; filter: saturate(0.6); }
+      58% { opacity: 1; filter: drop-shadow(0 0 10px var(--frontend-stroke)); }
+      to { opacity: 1; filter: drop-shadow(0 0 7px var(--frontend-stroke)); }
+    }
+@keyframes archify-share-cue-enter {
+      from { opacity: 0; transform: translate(-50%, -0.45rem); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+@keyframes archify-share-cue-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.48; transform: scale(0.78); }
+    }
+@media (prefers-reduced-motion: reduce) {
+      html[data-preset="signal-flow"] .diagram-container::before {
+        animation: none !important;
+      }
+      .pulse-dot { animation: none !important; }
+      svg[data-animation="trace"] [data-animate] {
+        animation: none !important;
+        stroke-dashoffset: 0;
+      }
+      .guided-view-progress span {
+        animation: none !important;
+        transform: scaleX(1) !important;
+      }
+      .story-trail-flow,
+      .intent-trace-flow,
+      .route-probe-flow,
+      .semantic-lens,
+      .diagram-guide,
+      [data-story-step],
+      .overview-map-live,
+      .guided-view-stop,
+      .share-chapter-cue,
+      .chapter-handoff-anchor,
+      .share-chapter-state::before,
+      .share-chapter-progress span { animation: none !important; }
+      .guided-view-chapter,
+      svg[data-chapter-preview] [data-node-id],
+      svg[data-chapter-preview] [data-edge-from] { transition: none !important; }
+      svg[data-story-playing="true"] .story-trail-flow {
+        stroke-dasharray: none;
+        stroke-dashoffset: 0;
+        opacity: 0.55;
+      }
+      .intent-trace-flow {
+        animation: none !important;
+        stroke-dasharray: none;
+        stroke-dashoffset: 0;
+        opacity: 0.72;
+      }
+      .route-probe-flow {
+        animation: none !important;
+        stroke-dasharray: none;
+        stroke-dashoffset: 0;
+        opacity: 0.78;
+      }
+      .route-journey-overlay,
+      .story-carrier-overlay { display: none !important; }
+      .semantic-lens-flow {
+        animation: none !important;
+        stroke-dasharray: none;
+        stroke-width: 2.2;
+        opacity: 0.34;
+        filter: none;
+      }
+      .relationship-pulse-overlay { display: none !important; }
+      .guided-view-chapter { transition: none !important; }
+      .source-evidence-beacon,
+      svg [data-node-id], svg [data-edge-from], svg [data-detail], svg [data-detail-anchor], svg [data-legend-hit], svg { transition: none !important; }
+    }
+]]></style>
+        <title id="archify-diagram-title">Fail closed: a bound key used against an unbound method</title>
+        <desc id="archify-diagram-description">A sequence diagram generated by Archify.</desc>
+        <!-- Definitions -->
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-default" />
+          </marker>
+          <marker id="arrowhead-emphasis" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-emphasis" />
+          </marker>
+          <marker id="arrowhead-security" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-security" />
+          </marker>
+          <marker id="arrowhead-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" class="m-dashed" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" class="c-grid" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- Time Segments -->
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="0" x="48" y="150" width="784" height="160" rx="10" class="c-lane" stroke-width="1"/>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="1" x="48" y="325" width="784" height="140" rx="10" class="c-lane" stroke-width="1"/>
+
+        <!-- Lifelines -->
+        <path d="M 144.5 142 L 144.5 495" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 348.83333333333337 142 L 348.83333333333337 495" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 553.1666666666667 142 L 553.1666666666667 495" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 757.5 142 L 757.5 495" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+
+        <!-- Activations -->
+        <rect x="343.83333333333337" y="185" width="10" height="255" rx="3" class="c-mask"/>
+        <rect x="343.83333333333337" y="185" width="10" height="255" rx="3" class="c-security" stroke-width="1"/>
+        <rect x="548.1666666666667" y="235" width="10" height="58" rx="3" class="c-mask"/>
+        <rect x="548.1666666666667" y="235" width="10" height="58" rx="3" class="c-security" stroke-width="1"/>
+        <rect x="752.5" y="333" width="10" height="59" rx="3" class="c-mask"/>
+        <rect x="752.5" y="333" width="10" height="59" rx="3" class="c-external" stroke-width="1"/>
+
+        <!-- Messages -->
+        <g data-edge-from="agent" data-edge-to="kow" data-edge-label="POST /gists, same placeholder" data-edge-key="0" data-edge-id="req-post">
+          <path data-composition-edge-from="agent" data-composition-edge-to="kow" data-composition-edge-id="req-post" data-composition-points="151.5,190;341.83333333333337,190" d="M 151.5 190 L 341.83333333333337 190" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <g data-detail="context">
+          <rect x="165.26666666666668" y="170" width="162.8" height="16" rx="3" class="c-mask"/>
+          <text x="246.66666666666669" y="180" class="t-messagebus" font-size="9" text-anchor="middle">POST /gists, same placeholder</text>
+        </g>
+        </g>
+
+        <g data-edge-from="kow" data-edge-to="policy" data-edge-label="scope check" data-edge-key="1" data-edge-id="scope-check">
+          <path data-composition-edge-from="kow" data-composition-edge-to="policy" data-composition-edge-id="scope-check" data-composition-points="355.83333333333337,240;546.1666666666667,240" d="M 355.83333333333337 240 L 546.1666666666667 240" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <g data-detail="context">
+          <rect x="416.40000000000003" y="220" width="69.2" height="16" rx="3" class="c-mask"/>
+          <text x="451.00000000000006" y="230" class="t-security" font-size="9" text-anchor="middle">scope check</text>
+        </g>
+        </g>
+
+        <g data-edge-from="policy" data-edge-to="kow" data-edge-label="deny: bound to GET only" data-edge-key="2" data-edge-id="deny">
+          <path data-composition-edge-from="policy" data-composition-edge-to="kow" data-composition-edge-id="deny" data-composition-points="546.1666666666667,288;355.83333333333337,288" d="M 546.1666666666667 288 L 355.83333333333337 288" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="385.20000000000005" y="268" width="131.60000000000002" height="16" rx="3" class="c-mask"/>
+          <text x="451.00000000000006" y="278" class="t-muted" font-size="9" text-anchor="middle">deny: bound to GET only</text>
+        </g>
+        </g>
+
+        <g data-edge-from="kow" data-edge-to="upstream" data-edge-label="placeholder forwarded verbatim" data-edge-key="3" data-edge-id="forward-verbatim">
+          <path data-composition-edge-from="kow" data-composition-edge-to="upstream" data-composition-edge-id="forward-verbatim" data-composition-points="355.83333333333337,338;750.5,338" d="M 355.83333333333337 338 L 750.5 338" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <g data-detail="context">
+          <rect x="469.16666666666674" y="318" width="168" height="16" rx="3" class="c-mask"/>
+          <text x="553.1666666666667" y="328" class="t-messagebus" font-size="9" text-anchor="middle">placeholder forwarded verbatim</text>
+        </g>
+        </g>
+
+        <g data-edge-from="upstream" data-edge-to="kow" data-edge-label="401 bad credentials" data-edge-key="4" data-edge-id="upstream-401">
+          <path data-composition-edge-from="upstream" data-composition-edge-to="kow" data-composition-edge-id="upstream-401" data-composition-points="750.5,386;355.83333333333337,386" d="M 750.5 386 L 355.83333333333337 386" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="497.76666666666677" y="366" width="110.8" height="16" rx="3" class="c-mask"/>
+          <text x="553.1666666666667" y="376" class="t-muted" font-size="9" text-anchor="middle">401 bad credentials</text>
+        </g>
+        </g>
+
+        <g data-edge-from="kow" data-edge-to="agent" data-edge-label="401, no policy leaked" data-edge-key="5" data-edge-id="resp-401">
+          <path data-composition-edge-from="kow" data-composition-edge-to="agent" data-composition-edge-id="resp-401" data-composition-points="341.83333333333337,432;151.5,432" d="M 341.83333333333337 432 L 151.5 432" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="186.0666666666667" y="412" width="121.2" height="16" rx="3" class="c-mask"/>
+          <text x="246.66666666666669" y="422" class="t-muted" font-size="9" text-anchor="middle">401, no policy leaked</text>
+        </g>
+        </g>
+
+        <!-- Segment Labels -->
+        <g data-graph-role="segment-label" data-segment-id="0">
+          <rect x="56" y="128" width="81.60000000000001" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="141" class="t-dim" font-size="9" font-weight="600">Exfil attempt</text>
+        </g>
+        <g data-graph-role="segment-label" data-segment-id="1">
+          <rect x="56" y="303" width="107.60000000000001" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="316" class="t-dim" font-size="9" font-weight="600">Denied by omission</text>
+        </g>
+
+        <!-- Participants -->
+        <g id="node-agent" data-node-id="agent" data-node-label="Agent" tabindex="0" role="button" aria-label="Focus Agent, prompt-injected, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="prompt-injected" data-node-context="Sequence participant">
+          <title>Agent · prompt-injected · Sequence participant</title>
+          <rect x="62" y="72" width="165" height="54" rx="6" class="c-mask"/>
+          <rect x="62" y="72" width="165" height="54" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(68 78) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="144.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Agent</text>
+          <text data-detail="context" x="144.5" y="111" class="t-muted" font-size="7" text-anchor="middle">prompt-injected</text>
+        </g>
+
+        <g id="node-kow" data-node-id="kow" data-node-label="Keys on the Wire" tabindex="0" role="button" aria-label="Focus Keys on the Wire, loopback proxy :14322, Sequence participant" aria-pressed="false" data-node-kind="security" data-node-sublabel="loopback proxy :14322" data-node-context="Sequence participant">
+          <title>Keys on the Wire · loopback proxy :14322 · Sequence participant</title>
+          <rect x="266.33333333333337" y="72" width="165" height="54" rx="6" class="c-mask"/>
+          <rect x="266.33333333333337" y="72" width="165" height="54" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(272.33333333333337 78) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="348.83333333333337" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Keys on the Wire</text>
+          <text data-detail="context" x="348.83333333333337" y="111" class="t-muted" font-size="7" text-anchor="middle">loopback proxy :14322</text>
+        </g>
+
+        <g id="node-policy" data-node-id="policy" data-node-label="Binding Policy" tabindex="0" role="button" aria-label="Focus Binding Policy, methods: [GET], Sequence participant" aria-pressed="false" data-node-kind="security" data-node-sublabel="methods: [GET]" data-node-context="Sequence participant">
+          <title>Binding Policy · methods: [GET] · Sequence participant</title>
+          <rect x="470.66666666666674" y="72" width="165" height="54" rx="6" class="c-mask"/>
+          <rect x="470.66666666666674" y="72" width="165" height="54" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(476.66666666666674 78) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="553.1666666666667" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Binding Policy</text>
+          <text data-detail="context" x="553.1666666666667" y="111" class="t-muted" font-size="7" text-anchor="middle">methods: [GET]</text>
+        </g>
+
+        <g id="node-upstream" data-node-id="upstream" data-node-label="Upstream API" tabindex="0" role="button" aria-label="Focus Upstream API, api.github.com, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="api.github.com" data-node-context="Sequence participant">
+          <title>Upstream API · api.github.com · Sequence participant</title>
+          <rect x="675" y="72" width="165" height="54" rx="6" class="c-mask"/>
+          <rect x="675" y="72" width="165" height="54" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(681 78) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="757.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Upstream API</text>
+          <text data-detail="context" x="757.5" y="111" class="t-muted" font-size="7" text-anchor="middle">api.github.com</text>
+        </g>
+
+        <!-- Legend -->
+        <g data-legend="">
+          <text x="40" y="486" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="return" data-legend-x="40" data-legend-baseline="506" data-legend-width="73">
+            <path d="M 40 503 L 74 503" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+            <text x="83" y="506" class="t-muted" font-size="10" font-weight="500">return</text>
+          </g>
+          <g data-legend-semantic-kind="security" data-legend-x="135" data-legend-baseline="506" data-legend-width="83">
+            <path d="M 135 503 L 169 503" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+            <text x="178" y="506" class="t-muted" font-size="10" font-weight="500">security</text>
+          </g>
+          <g data-legend-semantic-kind="dashed" data-legend-x="240" data-legend-baseline="506" data-legend-width="148">
+            <path d="M 240 503 L 274 503" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+            <text x="283" y="506" class="t-muted" font-size="10" font-weight="500">unbound, not injected</text>
+          </g>
+        </g>
+      </svg>

@@ -19,6 +19,54 @@ Exactly these, any others are a typo and fail closed:
 
 `{secret}` is the only substitution token — the note has no name key because the secret *is* the value. Bare-host shorthand: after the `# kow-binding` marker line, a note of just `host: api.example.com` uses the header/format defaults.
 
+> ### ⚠ A note can only inject a static value into a HEADER. That is not all kow does.
+>
+> The keys above are the **whole** note grammar (`_ALLOWED_NOTE_KEYS` in `notes_binding.py`), and an unknown key fails closed. There is no `inject:` or `type:` key, so **no injector type is expressible as a note**. Reading this table as the product's full capability is a documented failure mode: a session once concluded kow "cannot broker OAuth2 client-credentials at all" and reported a gap the product does not have.
+>
+> kow ships **ten injector types**; notes cover the first one only:
+>
+> | Injector | What it does | Source |
+> |---|---|---|
+> | static header | substitute a secret into a header | **note** or file |
+> | `body` | streaming placeholder replacement **inside the request body**, optional `content_type` filter | file only |
+> | `oauth2_client_credentials` | exchanges a vault-held client id + secret for an access token, injects it | file only |
+> | `oauth2_refresh` | refresh-token grant, with rotation write-back | file only |
+> | `github_app` | App JWT → installation access token | file only |
+> | `sigv4` / `hmac` / `jwt_bearer` | request signing | file only |
+> | `gcp_service_account` | mints a Google access token by impersonation; declares authority rather than forwarding a held secret | file only |
+> | `multi` | several of the above on one request | file only |
+>
+> **Decision rule.** Anything needing *two secrets*, a *token URL*, a *signature*, or injection somewhere other than a header is **config-file source**. Check `bindings.example.yaml` and `config_models.py` before declaring a credential unbrokerable.
+>
+> **Precedence trap.** With `binding_source: both` a note **wins over** a file binding for the same secret, so a leftover note silently disables the file-source injector you just wrote. Delete the note when migrating a secret from note to file source.
+
+## Two-part credentials — probe the upstream BEFORE designing the binding
+
+A note holds ONE secret and injects into a header, so a two-part credential (OAuth2 `client_id` + `client_secret`, `email:token`, key-pairs) is notes-expressible **only if the upstream accepts both parts pre-encoded into a single header value** — in practice, HTTP Basic.
+
+RFC 6749 §2.3.1 says authorization servers MUST support Basic. **That is not evidence that a given server does.** One provider's token endpoint ignores the `Authorization` header entirely and answers `400 "client_id was not specified"`; a notes-only Basic binding was authored on the RFC's authority and was inert.
+
+Probe with **fake** credentials — you never need the real secret to settle the shape:
+
+```bash
+curl -sS -X POST https://<host>/<token-path> \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'grant_type=client_credentials&client_id=probe-fake-id&client_secret=probe-fake-secret'
+```
+
+Read the error *class*, not the status code:
+
+| Response | Meaning | Route |
+|---|---|---|
+| Names a **missing parameter** | The server never parsed that location. | Try the other location. |
+| Names **bad credentials** | It parsed them and rejected the values. | That location works. |
+| A `200` | Should be impossible with FAKE credentials. | Stop and investigate the endpoint, not the binding. Only a probe with REAL credentials can confirm Basic issues a token. |
+
+When the parts must reach the **body**, use a file-source `body` injector. Two things to decide deliberately:
+
+- **`content_type` trades one failure mode for another.** Setting it means a mismatch forwards the body unmodified — a silent no-op that reads as "kow isn't injecting". Leaving it unset removes that trap but genuinely **widens** which requests can receive the secret, so unset is not "tighter" in a security sense. Unset suits an upstream accepting several encodings when `methods` + `paths` already pin the request; set it when you know the one content type. (Injection is also placeholder-triggered, so a request carrying no sentinel is never a candidate either way — but that is a separate gate, not a substitute for scope.)
+- **Substitution is byte-for-byte and format-blind.** kow does not escape the secret for JSON, form or multipart syntax, so a value containing a quote, backslash or ampersand can produce a malformed body in one encoding while working in another.
+
 ## Auth-pattern catalog
 
 **Bearer** (most APIs):

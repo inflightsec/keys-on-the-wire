@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "How Keys on the Wire injects a credential",
+    "output": "docs/diagrams/kow-injection.html",
+    "viewBox": [
+      1060,
+      660
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "views": [
+      {
+        "id": "inject-path",
+        "label": "The injection path",
+        "focus": [
+          "agent",
+          "kow",
+          "vault",
+          "upstream"
+        ],
+        "note": "Follow one authorized request from placeholder to real key on the upstream socket."
+      },
+      {
+        "id": "authorize",
+        "label": "Authorize and audit",
+        "focus": [
+          "kow",
+          "policy",
+          "audit"
+        ],
+        "note": "The binding check, and the audit record that is fsynced before any upstream write."
+      }
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "emphasis": {
+          "label": "carries the credential"
+        },
+        "security": {
+          "label": "policy and audit"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agent",
+      "sublabel": "holds placeholder only"
+    },
+    {
+      "id": "kow",
+      "type": "security",
+      "label": "Keys on the Wire",
+      "sublabel": "loopback proxy :14322"
+    },
+    {
+      "id": "policy",
+      "type": "security",
+      "label": "Binding Policy",
+      "sublabel": "host + method + path"
+    },
+    {
+      "id": "vault",
+      "type": "cloud",
+      "label": "Vault",
+      "sublabel": "Keychain / BWS / GSM / AWS"
+    },
+    {
+      "id": "audit",
+      "type": "database",
+      "label": "Audit Log",
+      "sublabel": "append-only, fsynced"
+    },
+    {
+      "id": "upstream",
+      "type": "external",
+      "label": "Upstream API",
+      "sublabel": "api.github.com"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 300,
+      "label": "Request carries a placeholder"
+    },
+    {
+      "from": 315,
+      "to": 570,
+      "label": "Resolve, audit, inject"
+    }
+  ],
+  "messages": [
+    {
+      "id": "req-get",
+      "from": "agent",
+      "to": "kow",
+      "y": 190,
+      "label": "GET /user, token avp-PLACEHOLDER-...",
+      "variant": "emphasis"
+    },
+    {
+      "id": "check-binding",
+      "from": "kow",
+      "to": "policy",
+      "y": 235,
+      "label": "match placeholder, check binding",
+      "variant": "security"
+    },
+    {
+      "id": "allow",
+      "from": "policy",
+      "to": "kow",
+      "y": 278,
+      "label": "allow: api.github.com GET",
+      "variant": "return"
+    },
+    {
+      "id": "fetch-secret",
+      "from": "kow",
+      "to": "vault",
+      "y": 325,
+      "label": "fetch secret, 300s TTL cache",
+      "variant": "default"
+    },
+    {
+      "id": "real-key",
+      "from": "vault",
+      "to": "kow",
+      "y": 368,
+      "label": "real key",
+      "variant": "return"
+    },
+    {
+      "id": "audit-write",
+      "from": "kow",
+      "to": "audit",
+      "y": 412,
+      "label": "inject_decision, fsync before write",
+      "variant": "security"
+    },
+    {
+      "id": "inject",
+      "from": "kow",
+      "to": "upstream",
+      "y": 458,
+      "label": "Authorization: token <real key>",
+      "variant": "emphasis"
+    },
+    {
+      "id": "upstream-ok",
+      "from": "upstream",
+      "to": "kow",
+      "y": 502,
+      "label": "200 JSON",
+      "variant": "return"
+    },
+    {
+      "id": "resp-ok",
+      "from": "kow",
+      "to": "agent",
+      "y": 545,
+      "label": "200 JSON, response scrubbed",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "kow",
+      "from": 185,
+      "to": 552,
+      "type": "security"
+    },
+    {
+      "participant": "policy",
+      "from": 230,
+      "to": 283,
+      "type": "security"
+    },
+    {
+      "participant": "vault",
+      "from": 320,
+      "to": 373,
+      "type": "cloud"
+    },
+    {
+      "participant": "audit",
+      "from": 405,
+      "to": 425,
+      "type": "database"
+    },
+    {
+      "participant": "upstream",
+      "from": 453,
+      "to": 508,
+      "type": "external"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "The guarantee",
+      "items": [
+        "Agent memory never holds real secret bytes (G1)",
+        "Real bytes only inside upstream TLS from the proxy (G2)",
+        "A compromised agent has nothing to steal"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Every request is authorized",
+      "items": [
+        "The placeholder names which secret is requested",
+        "Host, method and path checked against the binding (G3)",
+        "Audit fsynced before the upstream write (G6)"
+      ]
+    }
+  ]
+}

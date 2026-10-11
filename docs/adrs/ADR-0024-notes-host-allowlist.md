@@ -6,6 +6,77 @@ relates_to: ADR-0011 (notes bindings), ADR-0018 (GSM backend, 4th-pass confused-
 
 # ADR-0024: File-side notes host allowlist — annotations may only narrow, never add a host
 
+## Amendment (2026-09-24): notes may not declare a token-minting grant, and three designs that tried were rejected
+
+This question was re-opened by a real incident and is now settled, so that it
+stops being re-opened. Recording the rejected designs is the point of this
+amendment: each one looked sound, and each failed for a reason that is not
+obvious until stated.
+
+**What prompted it.** An upstream (Verda) needs an OAuth2 client-credentials
+grant and rejects HTTP Basic, wanting the credentials in the request body. That
+defeats the one existing way to express a two-part credential as a note
+(pre-encode both halves and inject a static `Basic` header). The credential
+therefore cannot be onboarded through vault metadata at all, and the operator
+asked, reasonably, why the same YAML that works in `bindings.yaml` may not go in
+a note.
+
+**Why it is not about the content.** It is about who may write it, and about one
+field. `token_url` is not a description of a destination: it is where kow POSTs
+the client id and secret (`oauth2_client_credentials.py`, `body_post`). The
+config file is behind root on the host plus a commit plus a deploy; a note is
+behind a single vault write token. A note that could set `token_url` would let a
+metadata-only writer make kow send the credential to an endpoint of their choice.
+
+**Three designs were proposed and all three were rejected** by adversarial
+cross-model review:
+
+1. **Profile reference** — the file declares a reusable minting profile, the note
+   points at it by name. Rejected: a profile authorises *parameters*, not their
+   application to a *particular* credential. Activating minting for a
+   previously-static secret is still metadata declaring authority.
+2. **Token-URL allowlist** — the note declares the grant inline, but the endpoint
+   must be pre-approved in the file. Rejected: approving where a token is *minted*
+   says nothing about where it may then be *sent*, and notes control hosts, so
+   approved minting becomes a token-exfiltration path. One endpoint also serves
+   many scopes, audiences and tenants, so URL approval does not bound authority.
+3. **Own-secret-only, token URL within the note's own host set** — the strongest
+   version. It removes the cross-secret nomination that sank 1 and 2 (a note may
+   reference no secret but the one it lives on; a two-part credential is stored
+   pre-joined and split by the injector). Rejected on two grounds that survive
+   the constraint:
+   - **Set membership is not a relationship.** A note listing hosts A and B
+     satisfies "token URL is in my host set" while minting at A and injecting the
+     resulting token at B. Permission to receive the original credential is not
+     permission to receive every token obtainable with it.
+   - **Delivery is not minting authority.** A host may reject the joined value as
+     static authentication yet accept its split components at its OAuth endpoint,
+     yielding a usable bearer token with selectable scopes. "It could already send
+     those bytes there" therefore does not establish equivalence.
+
+**The converging result.** The cheapest defensible form is a file-authorised,
+per-secret grant that fixes the minting parameters and the token destinations.
+At that point the file already names the secret and the grant, and the note adds
+nothing, which is where this started. Every safe variant costs a file edit, so
+notes-only saves no friction. **Decision: unchanged. Minting injectors stay
+config-file only.**
+
+**What was fixed instead.** The actual cost of the incident was not the missing
+capability, it was silence: the stale note shadowed the new file-source injector
+and kow is fail-closed, so the symptom was "auth did not happen" with nothing
+naming the note. `handlers.py` now warns at load when a note overrides a file
+binding, warns harder when the two are different injector types (naming the
+injector that stopped running), and warns when the note is *narrower* than the
+file binding, because "delete the note" would then widen the credential's reach.
+Covered by `tests/test_note_shadows_file_binding.py`.
+
+Open items a future attempt must answer, raised by the same review and not
+addressed here: policy-snapshot consistency between minting, token caching and
+injection across a reload; wildcard containment rather than pattern overlap when
+comparing a note's hosts to the file allowlist; and a parsing contract for any
+pre-joined credential format.
+
+
 ## Context
 
 A notes/annotation binding (BWS secret `notes`, GSM `avp-binding` annotation) can name the
