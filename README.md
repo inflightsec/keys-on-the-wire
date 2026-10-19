@@ -8,6 +8,8 @@ Stops credential stealers (Shai-Hulud and similar) and prompt-injected agents fr
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![CI](https://github.com/inflightsec/keys-on-the-wire/actions/workflows/test.yml/badge.svg)](https://github.com/inflightsec/keys-on-the-wire/actions/workflows/test.yml)
 
+**[keysonthewire.com](https://keysonthewire.com)** — demo, comparison against Vault Agent / Doppler / `op run`, and the [FAQ](https://keysonthewire.com/faq).
+
 Ask your agent to set up a secret, paste one line into your vault, and you are done. Same view across macOS Keychain, Bitwarden, Google Secret Manager, and AWS:
 
 ![Keys on the Wire desktop walkthrough: ask, paste one note, done](docs/desktop-demo.gif)
