@@ -48,7 +48,7 @@ sudo kow setup --bws
 **2. Broker a service from any agent.** Paste this to Claude Code, Codex, Cursor, or a bare terminal agent:
 
 ```
-Read https://github.com/inflightsec/keys-on-the-wire#install and set up kow for me.
+Read https://keysonthewire.com/install and set up kow for me.
 ```
 
 The agent mints the placeholder and prints the exact note to paste into your vault. It never sees your key. Prefer a Claude Code plugin? Install the [bundled skill](skills/kow/) instead:
