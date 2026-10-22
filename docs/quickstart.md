@@ -1,54 +1,71 @@
 # Quickstart
 
-kow is a local proxy that swaps a placeholder for the real secret in-flight, so your agent never holds the credential. Five steps: no config file to hand-write.
+kow is a local proxy that swaps a placeholder for the real secret in flight, so your agent never holds the credential. This page takes you from install to a brokered key in two stages: a no-vault trial, then a real vault.
 
 ## 1. Install
 
-Mac:
-
 ```bash
-brew install inflightsec/keys-on-the-wire/keys-on-the-wire
+brew install inflightsec/keys-on-the-wire/keys-on-the-wire   # macOS
+pipx install 'keys-on-the-wire[bitwarden]'                   # anywhere with Python 3.12+
 ```
 
-Anywhere with Python 3.12+:
+Drop `[bitwarden]` if you won't use Bitwarden.
+
+## 2. Try it with no vault
 
 ```bash
-pipx install keys-on-the-wire
+sudo kow setup --static
 ```
 
-## 2. Set it up
+This creates the `kow` service user, the proxy CA, and a starter config with one secret, `EXAMPLE_API_KEY`, bound to `example.com` with the placeholder `example_PLACEHOLDER_0001`. The value lives in a file owned by root and readable only by the `kow` service user, so your shell and your agent can't read it.
+
+Send the placeholder through the proxy and check the audit log:
 
 ```bash
-sudo kow setup --bws
+kow run -- curl -s -o /dev/null -w '%{http_code}\n' --cacert /etc/kow/ca.pem \
+  -H "Authorization: Bearer example_PLACEHOLDER_0001" https://example.com
+sudo tail -n1 /var/log/kow/audit.jsonl
+# macOS paths: /usr/local/etc/kow/ca.pem and /usr/local/var/log/kow/audit.jsonl
 ```
 
-Installs the service and prompts for your **Bitwarden Secrets Manager machine-account token**. (Create the machine account in the BWS console first and copy its access token.)
+The last line is an `inject_decision` for `EXAMPLE_API_KEY` to `example.com`. Point the same placeholder at any other host and kow forwards it unchanged; the real value never leaves.
 
-## 3. Install the skill
+`static` is for trying kow out and for tests. It keeps values in plaintext on disk, so move to a vault before you use real keys.
 
-In Claude Code:
+## 3. Switch to your vault
+
+Re-run setup with the vault you already use:
+
+| Vault | Command | What you need first |
+|---|---|---|
+| Bitwarden Secrets Manager | `sudo kow setup --bws` | a machine-account token ([Prerequisites](prerequisites.md)) |
+| Google Secret Manager | `sudo kow setup --gsm` | a service account ([GSM guide](gcp-secret-manager.md)) |
+| AWS Secrets Manager | `sudo kow setup --aws` | temporary credentials via SSO, Roles Anywhere or an instance profile |
+| macOS Keychain | `sudo kow setup --keychain` | nothing; add values with `kow secret add` |
+
+## 4. Broker a real key
+
+Paste this to Claude Code, Codex, Cursor or any terminal agent:
+
+```
+Read https://keysonthewire.com/install and set up kow for me.
+```
+
+Or, in Claude Code, install the bundled skill and just ask ("add my `GROQ_API_KEY` to kow"):
 
 ```
 /plugin marketplace add inflightsec/keys-on-the-wire
 /plugin install kow@keys-on-the-wire
 ```
 
-## 4. Ask the skill for the binding
+Either way you get the placeholder and a short `# kow-binding` note. Create the secret in your vault with the real value and paste the note into its **Notes** field. kow re-reads the vault every 60 seconds (`notes_refresh_seconds`), so there's no restart.
 
-Just ask, in plain English:
+## 5. Run your agent through it
 
-> Add my `GROQ_API_KEY` to kow
+```bash
+kow env && kow run claude
+```
 
-The skill hands you the exact `# kow-binding` note - which host, which header, for that secret. No YAML, no redeploy.
+`kow env` writes the placeholders to `~/.config/kow/env`; `kow run` loads them and sets the proxy and CA variables for that one process. `kow doctor` checks the setup. If your stack needs variables `kow run` doesn't set, see the [compatibility matrix](usage.md#compatibility-matrix).
 
-## 5. Add the secret
-
-In Bitwarden Secrets Manager, create the secret (`GROQ_API_KEY` = your key) and paste the skill's `# kow-binding` note into its **Notes** field.
-
-That's it. kow re-reads the vault on a timer (default every 60s) and starts brokering the new key automatically - no restart, no redeploy. (Tune or disable with `notes_refresh_seconds`.)
-
----
-
-Point your agent at the proxy (`HTTPS_PROXY=http://127.0.0.1:14322`) and export the **placeholder** instead of the real key: the real secret goes on the wire, your process never holds it. `kow doctor` confirms the setup.
-
-Going deeper, hardening, how it works, and the full binding grammar: [install-systemd.md](install-systemd.md) · [concepts.md](concepts.md) · [bindings.example.yaml](../bindings.example.yaml).
+Going deeper: [Concepts](concepts.md) · [Usage](usage.md) · [Linux install details](install-systemd.md) · [bindings.example.yaml](../bindings.example.yaml)

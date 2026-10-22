@@ -2,118 +2,73 @@
 
 **Your AI agent never holds your API keys. It sends a placeholder; the real secret is swapped in on the wire.**
 
-Stops credential stealers (Shai-Hulud and similar) and prompt-injected agents from leaking your secrets. A compromised agent has nothing to take.
+Credential stealers like Shai-Hulud and the poisoned LiteLLM 1.107.0 on PyPI dump every env var they can reach. Behind kow, they get placeholders that are worthless anywhere else. Prompt-injected agents get the same nothing.
 
 [![PyPI](https://img.shields.io/pypi/v/keys-on-the-wire.svg)](https://pypi.org/project/keys-on-the-wire/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![CI](https://github.com/inflightsec/keys-on-the-wire/actions/workflows/test.yml/badge.svg)](https://github.com/inflightsec/keys-on-the-wire/actions/workflows/test.yml)
 
-**[keysonthewire.com](https://keysonthewire.com)** — demo, comparison against Vault Agent / Doppler / `op run`, and the [FAQ](https://keysonthewire.com/faq).
-
-Ask your agent to set up a secret, paste one line into your vault, and you are done. Same view across macOS Keychain, Bitwarden, Google Secret Manager, and AWS:
+**[keysonthewire.com](https://keysonthewire.com)** has the demo, a comparison against Vault Agent / Doppler / `op run`, and the [FAQ](https://keysonthewire.com/faq).
 
 ![Keys on the Wire desktop walkthrough: ask, paste one note, done](docs/desktop-demo.gif)
 
-## How it works
+## Works with
 
-1. Your agent sends a request with a *placeholder*, not the key.
-2. Keys on the Wire swaps in the real secret from your vault, in transit.
-3. The agent never sees the key. Nothing to leak, nothing to steal.
+**Agents:** Claude Code · Codex · Cursor · any terminal agent, script or app that speaks HTTPS
+
+**Vaults:** Bitwarden Secrets Manager · Google Secret Manager · AWS Secrets Manager · macOS Keychain · local file (no vault needed)
+
+`kow run -- <command>` sets the proxy and CA variables for that one process. What each stack reads, and which you set yourself, is in the [compatibility matrix](docs/usage.md#compatibility-matrix).
+
+## How it works
 
 ![How Keys on the Wire substitutes secrets on the wire](docs/how-it-works-animated.svg)
 
-Under the hood it's a loopback HTTPS proxy. It fetches each credential from your vault just in time and injects it into the outbound request, so the calling process (your agent, or anything else you route through it) never holds the real bytes.
+1. Your agent sends a request with a *placeholder*, not the key.
+2. kow, a loopback HTTPS proxy, fetches the real secret from your vault just in time and swaps it in, only for the hosts (and optionally methods and paths) you bound it to.
+3. The agent never holds the real bytes. Unbound hosts get the placeholder or a 403, never the key, and every decision lands in an append-only audit log.
 
-## Features
+Bearer, `token`, X-API-Key, Basic, OAuth2 refresh and client-credentials, JWT bearer, GitHub App, HMAC and AWS SigV4 are all supported, and so are [MCP servers](docs/adrs/ADR-0040-mcp-server-credential-broker.md) (`kow mcp install`).
 
-- **Any REST or HTTPS API.** A loopback HTTPS proxy: route any agent, app or script through it and kow injects the key into the outbound request.
-- **Every auth scheme.** Bearer, `token`, X-API-Key, Basic, plus OAuth2 refresh and client-credentials, JWT bearer, GitHub App, HMAC and AWS SigV4 - with presets for Google, Microsoft, Auth0, Slack, Atlassian and Okta.
-- **Your vault, not ours.** macOS Keychain, Bitwarden Secrets Manager, Google Secret Manager, AWS Secrets Manager, or a local `static` file for trying it out. See [Adapter architecture](docs/adapter-architecture.md).
-- **Scoped and fail-closed.** Bind a key to specific `methods:` and `paths:`. A denied destination gets a 403, or the placeholder forwarded verbatim, never the real key. Every injection lands in an append-only audit log.
-- **Broker MCP servers.** `kow mcp install` swaps a standing MCP token for a placeholder and routes that server's egress through the proxy.
-- **Open source, no lock-in.** Apache-2.0, no hosted tier, no telemetry. The proxy never phones home.
-
-## Install
-
-**1. Install** (Linux `pipx`, macOS `brew`):
+## Try it in two minutes, no vault
 
 ```bash
-pipx install 'keys-on-the-wire[bitwarden]'
-# or if you are on macOS:
-brew install inflightsec/keys-on-the-wire/keys-on-the-wire
-# Then set it up with bws, keychain, gsm or asm
-sudo kow setup --bws
+pipx install keys-on-the-wire        # or: brew install inflightsec/keys-on-the-wire/keys-on-the-wire
+sudo kow setup --static              # service user, CA, and a starter EXAMPLE_API_KEY bound to example.com
+kow run -- curl -s -o /dev/null -w '%{http_code}\n' --cacert /etc/kow/ca.pem \
+  -H "Authorization: Bearer example_PLACEHOLDER_0001" https://example.com
+sudo tail -n1 /var/log/kow/audit.jsonl
+# macOS paths: /usr/local/etc/kow/ca.pem and /usr/local/var/log/kow/audit.jsonl
 ```
 
-**2. Broker a service from any agent.** Paste this to Claude Code, Codex, Cursor, or a bare terminal agent:
+The audit line shows kow swapping the placeholder for the real value on the way to `example.com`. The `static` backend keeps that value in a file owned by root and readable only by the `kow` service user, so neither you nor your agent can read it. It is for trying kow out. For real keys, use a vault.
 
-```
-Read https://keysonthewire.com/install and set up kow for me.
-```
+## Use it for real
 
-The agent mints the placeholder and prints the exact note to paste into your vault. It never sees your key. Prefer a Claude Code plugin? Install the [bundled skill](skills/kow/) instead:
+1. **Set up your vault:** `sudo kow setup --bws`, `--gsm`, `--aws`, or `--keychain` (macOS). [Prerequisites](docs/prerequisites.md) covers the vault side.
+2. **Broker a key.** Paste this to your agent:
+   ```
+   Read https://keysonthewire.com/install and set up kow for me.
+   ```
+   It mints the placeholder and prints a one-line `# kow-binding` note to paste into the secret's Notes field. It never sees your key. In Claude Code you can use the [bundled skill](skills/kow/) instead: `/plugin marketplace add inflightsec/keys-on-the-wire`, then `/plugin install kow@keys-on-the-wire`.
+3. **Run your agent through it:** `kow env && kow run claude`.
 
-```
-/plugin marketplace add inflightsec/keys-on-the-wire
-/plugin install kow@keys-on-the-wire
-```
-
-**3. Add the real key** to your vault with that note, then route your agent through the proxy:
-
-```bash
-kow env && kow run claude
-```
-
-Done. The agent only ever sends the placeholder; Keys on the Wire swaps in the real key on the wire.
-
-New to this? The [Quickstart guide](docs/quickstart.md) walks the first run in full, and [Prerequisites](docs/prerequisites.md) covers vault setup. Prefer shell env vars over `kow run`? See [Usage](docs/usage.md).
+The [Quickstart](docs/quickstart.md) walks the same path in full.
 
 ## Before you point it at production keys
 
-- **Trial it behind one process.** `kow run -- <command>` sets the proxy and CA variables in that process only; your login shell never inherits them. [Scoping to a single process](docs/single-process.md).
-- **Fail-closed is the only mode.** If kow is down, routed calls fail rather than proceeding without credentials. A denied destination gets a 403, or the placeholder forwarded verbatim; the real key is never sent.
-- **It stops theft, not misuse.** kow takes the key out of the agent's context; it does not judge why an API is being called. Narrowing a binding with `methods:` and `paths:` is the lever, and it is enforced. [Is it for you?](docs/is-it-for-you.md) draws the full boundary.
-
-## Broker an MCP server
-
-Each MCP server keeps a long-lived token in cleartext in your client config, readable by every other server the client loads. `kow mcp install` swaps that standing secret for a placeholder and routes the server's egress through the proxy:
-
-```
-kow mcp install github --host api.github.com --env-var GITHUB_PERSONAL_ACCESS_TOKEN \
-  --server-cmd "npx -y @modelcontextprotocol/server-github"
-```
-
-It prints the vault note and the exact `claude mcp add --env` command. Design and threat model: [ADR-0040](docs/adrs/ADR-0040-mcp-server-credential-broker.md).
-
-## The binding is one line
-
-Onboarding a credential is not hand-written YAML. The bundled [kow skill](skills/kow/) asks the auth shape and host, then tells you exactly what to paste into your secret's Notes field:
-
-```
-# kow-binding
-api.acme.com
-```
-
-That marker line is what makes it a binding; without it the note stays a plain human description, never parsed ([ADR-0025](docs/adrs/ADR-0025-notes-binding-marker.md)). The assistant proposes, you apply. It never sees or stores the secret.
-
-## Watch it stop an attack
-
-The desktop walkthrough up top is the fast path. If you'd rather watch it defend against a prompt injection in the terminal, this is the same flow as an asciinema recording: a prompt-injected agent tries to read the key and gets only the placeholder:
-
-[![Keys on the Wire demo: prompt injection vs. credential isolation](docs/demo.svg)](docs/demo.cast)
+- **It stops theft, not misuse.** A hijacked agent can still *use* a bound key within its scope while it runs. Narrow bindings with `methods:` and `paths:`. [Is it for you?](docs/is-it-for-you.md) draws the full boundary.
+- **Fail-closed is the only mode.** If kow is down, routed calls fail; they never go out with a real key by accident.
+- **Trial it behind one process.** `kow run` keeps the variables out of your login shell. See [Single process](docs/single-process.md).
 
 ## Docs
 
-**Start here**: [Is it for you?](docs/is-it-for-you.md) if you're evaluating · [Prerequisites](docs/prerequisites.md) to set up your vault · [Quickstart](docs/quickstart.md) for a 10-minute first run.
+**Start here:** [Is it for you?](docs/is-it-for-you.md) · [Quickstart](docs/quickstart.md) · [Prerequisites](docs/prerequisites.md) · [Concepts](docs/concepts.md)
 
-**Understand**: [Concepts](docs/concepts.md) for placeholder, binding, CA and fail-closed in plain terms · [Architecture](docs/architecture.md) for the threat model, the G1 to G9 invariants and residual risks.
+**Install and operate:** [Usage](docs/usage.md) · [Linux](docs/install-systemd.md) · [Docker](docs/docker.md) · [macOS](https://github.com/inflightsec/homebrew-keys-on-the-wire) · [Google Secret Manager](docs/gcp-secret-manager.md) · [Isolation on Linux](docs/linux-isolation.md) / [macOS](docs/macos-isolation.md) · [Troubleshooting](docs/troubleshooting.md)
 
-**Install and operate**: [Linux](docs/install-systemd.md) · [Docker](docs/docker.md) · [macOS](https://github.com/inflightsec/homebrew-keys-on-the-wire) · [Usage](docs/usage.md) · [Single process](docs/single-process.md) · [Linux isolation](docs/linux-isolation.md) · [macOS isolation](docs/macos-isolation.md) · [Google Secret Manager](docs/gcp-secret-manager.md) · [Google service accounts](docs/gcp-service-account.md) · [Troubleshooting](docs/troubleshooting.md)
-
-**Reference**: [bindings.example.yaml](bindings.example.yaml) is the full config schema · [Adapter architecture](docs/adapter-architecture.md) for vault backends and how to add one · [Comparison](docs/comparison.md) versus Vault Agent, Doppler, `op run` and others · [CHANGELOG](./CHANGELOG.md) · [SECURITY](./SECURITY.md) · [CONTRIBUTING](./CONTRIBUTING.md) · [CREDITS](./CREDITS.md)
+**Reference:** [Architecture and threat model](docs/architecture.md) · [bindings.example.yaml](bindings.example.yaml) · [Adapters](docs/adapter-architecture.md) · [Comparison](docs/comparison.md) · [Terminal demo](docs/demo.cast) · [CHANGELOG](./CHANGELOG.md) · [SECURITY](./SECURITY.md) · [CONTRIBUTING](./CONTRIBUTING.md)
 
 ## Open source, no lock-in
 
-Every feature is in this repo under Apache-2.0. There is no paywalled tier, no hosted service, and no telemetry. The proxy never phones home: its only outbound connections are your vault and the upstream APIs your agent calls. If an [alternative](docs/comparison.md) fits your setup better, use that.
-
-One optional dependency is not open source, the Bitwarden backend's [`bitwarden-sdk`](https://pypi.org/project/bitwarden-sdk/), which you install only if you use that backend. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache-2.0, no paid tier, no hosted service, no telemetry. kow only talks to your vault and the APIs your agent calls. The optional Bitwarden backend depends on [`bitwarden-sdk`](https://pypi.org/project/bitwarden-sdk/), which is not open source; see [NOTICE](NOTICE).

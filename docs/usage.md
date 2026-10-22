@@ -1,5 +1,21 @@
 # Usage: pointing your agent at the proxy
 
+## Compatibility matrix
+
+kow is an HTTPS proxy with its own CA, so every client needs two things: route through the proxy, and trust the CA. Different stacks read different variables.
+
+| Stack | Routes via | Trusts the CA via | Set by `kow run`? |
+|---|---|---|---|
+| Claude Code, Codex, Cursor and other Node-based agents | `HTTPS_PROXY` + `NODE_USE_ENV_PROXY=1` (Node 24+) | `NODE_EXTRA_CA_CERTS` (adds to defaults) | Yes |
+| Python `httpx` (OpenAI and Anthropic SDKs) | `HTTPS_PROXY` | `SSL_CERT_FILE` | Yes |
+| Python `requests` | `HTTPS_PROXY` | `REQUESTS_CA_BUNDLE` | No, set it yourself (bundle below) |
+| curl | `HTTPS_PROXY` | `CURL_CA_BUNDLE`, or `--cacert` | Proxy yes, CA no |
+| Anything else | `HTTPS_PROXY` | its own CA setting | Proxy yes |
+
+`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` *replace* the trust store rather than adding to it. Point them at a bundle of the system roots plus kow's CA, built as shown below, not at kow's CA alone.
+
+## Setting the variables by hand
+
 With the daemon running (either install path), any HTTPS client can route through the proxy. In the calling shell - typically the shell that launches your agent:
 
 ```bash
