@@ -30,6 +30,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from kow._ssrf_guard import SsrfBlockedError, check_url_not_internal, resolve_and_vet
+from kow._textguard import has_forbidden_char
 
 _log = logging.getLogger("kow.injectors._token_transport")
 _RETRY_BACKOFF_SECONDS = 1.0
@@ -48,6 +49,13 @@ class TokenResult:
     token: str | None = None
     expires_at: float | None = None
     error_description: str | None = None
+
+    def __post_init__(self) -> None:
+        # Every resolver writes a minted token straight into a header, past the
+        # CR/LF gate the static path has, so refuse it here (C1, review of 1.2.0).
+        if self.outcome == "success" and self.token is not None and has_forbidden_char(self.token):
+            object.__setattr__(self, "outcome", "response_parse_failed")
+            object.__setattr__(self, "token", None)
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):

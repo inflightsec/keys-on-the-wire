@@ -28,6 +28,7 @@ from kow.config_models import (
     Oauth2RefreshInjector,
     Sigv4Injector,
     _validate_inject_block,
+    check_header_field,
     iter_leaf_injectors,
     validate_placeholder_invariants,
 )
@@ -302,6 +303,20 @@ class SecretSpec(BaseModel):
         if not v:
             raise ValueError("empty bindings = deny-all; add explicit bindings or remove the entry")
         return v
+
+    @model_validator(mode="after")
+    def reject_header_break_characters(self) -> SecretSpec:
+        """HeaderInjector checks its own fields; the token-minting and signing
+        injectors' ``header``/``format`` become header bytes the same way and
+        are just as settable from a vault note (C1, review of 1.2.0)."""
+        for leaf in iter_leaf_injectors(self.inject):
+            if isinstance(leaf, HeaderInjector | BodyInjector):
+                continue
+            for field in ("header", "timestamp_header", "format"):
+                value = getattr(leaf, field, None)
+                if isinstance(value, str):
+                    check_header_field(value, field)
+        return self
 
     @model_validator(mode="after")
     def validate_compose_and_template(self) -> SecretSpec:  # noqa: C901

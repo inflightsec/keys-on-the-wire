@@ -203,6 +203,24 @@ def _render_substitution(format_str: str, *, real_secret: str, secret_name: str)
     return format_str.replace("{" + secret_name + "}", real_secret)
 
 
+def check_header_field(value: str, field_name: str) -> None:
+    """Refuse a header name or value that would split the HTTP field. Shared by
+    every injector whose ``header``/``format`` become header bytes."""
+    assert_no_forbidden_chars(value, label=f"inject.{field_name}")
+    # The category guard above refuses break characters everywhere, but
+    # ':' and ' ' are ordinary punctuation to it. For the header NAME
+    # specifically, enforce RFC 7230 token grammar: a colon in the name
+    # relocates everything after it into the VALUE on the receiving end,
+    # and a space makes the field unparseable. No new authority is at
+    # stake — the note author chooses the name freely — this is shape
+    # correctness, fail-closed per-secret. (Oracle review, 2026-10-11.)
+    if field_name.endswith("header") and not _HTTP_TOKEN_RE.match(value):
+        raise ValueError(
+            f"inject.{field_name} {value!r} is not a valid HTTP field name "
+            "(RFC 7230 token: letters, digits, and !#$%&'*+-.^_`|~)"
+        )
+
+
 class HeaderInjector(BaseModel):
     """Header-injection rule. Exactly one of ``format`` (literal substitution)
     or ``template`` (Jinja2-sandboxed, requires ``compose:`` on the parent)
@@ -228,19 +246,7 @@ class HeaderInjector(BaseModel):
         yields InvalidBinding) rather than failing the whole config.
         """
         if v is not None:
-            assert_no_forbidden_chars(v, label=f"inject.{info.field_name}")
-        # The category guard above refuses break characters everywhere, but
-        # ':' and ' ' are ordinary punctuation to it. For the header NAME
-        # specifically, enforce RFC 7230 token grammar: a colon in the name
-        # relocates everything after it into the VALUE on the receiving end,
-        # and a space makes the field unparseable. No new authority is at
-        # stake — the note author chooses the name freely — this is shape
-        # correctness, fail-closed per-secret. (Oracle review, 2026-10-11.)
-        if v is not None and info.field_name == "header" and not _HTTP_TOKEN_RE.match(v):
-            raise ValueError(
-                f"inject.header {v!r} is not a valid HTTP field name "
-                "(RFC 7230 token: letters, digits, and !#$%&'*+-.^_`|~)"
-            )
+            check_header_field(v, info.field_name or "")
         return v
 
     def render_value(self, *, real_secret: str, secret_name: str) -> str:

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed reload no longer leaves the old SSH agent signing.** If the credential endpoint could not bind (port in use), the SSH agent restart was skipped and the previous config's signing oracle kept running after a reload meant to revoke it.
+- **Token-minting injectors now refuse header-splitting characters.** The CR/LF gate covered only static-secret headers. `header`/`format` on `gcp_service_account`, `oauth2_client_credentials`, `oauth2_refresh`, `github_app`, `jwt_bearer`, `sigv4` and `hmac` bindings are now checked at config load, and a minted token carrying a control character is a parse failure.
+- **An already-expired GCP IAM token is refused** instead of being cached for a fresh lifetime.
+
 ## [1.2.0], 2026-10-11
 
 ### Added

@@ -452,3 +452,28 @@ def test_endpoint_refuses_a_non_gcp_binding(tmp_path: Path) -> None:
                 endpoint={"service_account_email": _SA},
             )
         )
+
+
+def test_endpoint_restart_failure_still_stops_the_old_ssh_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C4 (review of 1.2.0): the endpoint restarts before the ssh-agent, so a
+    bind failure there used to skip the ssh restart and leave the previous
+    config's signing oracle running after a reload meant to revoke it."""
+    addon = AgentVaultProxyAddon()
+    stopped: list[bool] = []
+
+    class _OldAgent:
+        def stop(self) -> None:
+            stopped.append(True)
+
+    addon._ssh_agent = _OldAgent()  # type: ignore[assignment]
+
+    def _bind_fails(self: AgentVaultProxyAddon, config: Config) -> None:
+        raise OSError("address already in use")
+
+    monkeypatch.setattr(AgentVaultProxyAddon, "_restart_credential_endpoint", _bind_fails)
+    with pytest.raises(OSError):
+        addon.configure_from_path(str(_config_yaml(tmp_path)), backend_override=FakeBackend({}))
+    assert stopped == [True]
+    assert addon._ssh_agent is None

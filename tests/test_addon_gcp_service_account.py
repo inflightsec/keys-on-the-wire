@@ -765,3 +765,23 @@ def test_cache_identity_covers_every_mint_input() -> None:
     ]
     for v in variants:
         assert _cache_identity(GcpServiceAccountInjector(**v)) != ref, v
+
+
+def test_iam_token_that_has_already_expired_is_refused() -> None:
+    """C5 (review of 1.2.0): a past expireTime used to be replaced with now +
+    lifetime, caching a dead token for up to an hour. An UNREADABLE expiry still
+    falls back to the lifetime (see the unparseable-expiry test above)."""
+    from kow.config_models import GcpServiceAccountInjector
+    from kow.injectors.gcp_service_account import _parse_iam_token
+
+    injector = GcpServiceAccountInjector.model_validate(
+        {
+            "type": "gcp_service_account",
+            "mode": "impersonate",
+            "service_account_email": "agent-runner@my-project.iam.gserviceaccount.com",
+            "scopes": "https://www.googleapis.com/auth/cloud-platform",
+        }
+    )
+    payload = {"accessToken": "ya29.minted", "expireTime": "2000-01-01T00:00:00Z"}
+    result = _parse_iam_token(json.dumps(payload).encode(), injector)
+    assert result.outcome == "response_parse_failed"

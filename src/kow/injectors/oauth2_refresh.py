@@ -39,6 +39,7 @@ from mitmproxy import http
 
 from kow._derived_token_cache import DerivedTokenCache, KeyInputs
 from kow._ssrf_guard import SsrfBlockedError, check_url_not_internal
+from kow._textguard import has_forbidden_char
 from kow.backends import (
     BackendNotWritableError,
     BackendUnavailableError,
@@ -294,6 +295,9 @@ def _parse_success(
         )
 
     access_token = str(payload["access_token"])
+    # The resolver injects this straight into a header (C1, review of 1.2.0).
+    if has_forbidden_char(access_token):
+        return ExchangeResult(outcome="response_parse_failed")
     expires_in = payload.get("expires_in")
     now = time.time()
     if isinstance(expires_in, int) and expires_in > 0:

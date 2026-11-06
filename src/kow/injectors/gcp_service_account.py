@@ -245,8 +245,12 @@ def _parse_iam_token(body: bytes, injector: GcpServiceAccountInjector) -> TokenR
             exp_unix = datetime.fromisoformat(expire_time.replace("Z", "+00:00")).timestamp()
         except ValueError:
             exp_unix = None
+    # An unreadable expiry falls back to the configured lifetime, but one that
+    # says the token is already dead must not buy it a fresh one (C5, review of 1.2.0).
+    if exp_unix is not None and exp_unix <= now:
+        return TokenResult(outcome="response_parse_failed")
     ceiling = now + injector.lifetime_seconds
-    if exp_unix is None or exp_unix <= now:
+    if exp_unix is None:
         exp_unix = ceiling
     exp_unix = min(exp_unix, ceiling)
     ttl = max(0.0, exp_unix - now - injector.cache_ttl_safety_seconds)

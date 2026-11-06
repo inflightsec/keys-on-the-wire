@@ -257,8 +257,12 @@ class AgentVaultProxyAddon:
         # Fresh derived-token cache on every full (re)load — stale access tokens
         # from a prior config must not outlive the binding shape that minted them.
         self._token_cache = DerivedTokenCache()
-        self._restart_credential_endpoint(snap.config)
-        self._restart_ssh_agent(snap.config, new_client, new_audit)
+        # finally: an endpoint bind failure must not skip the ssh restart, or the
+        # old config's signing oracle outlives a reload meant to revoke it.
+        try:
+            self._restart_credential_endpoint(snap.config)
+        finally:
+            self._restart_ssh_agent(snap.config, new_client, new_audit)
 
     def _restart_ssh_agent(
         self, config: Config, client: CachingSecretsClient, audit: AuditWriter
