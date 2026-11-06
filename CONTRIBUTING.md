@@ -110,6 +110,10 @@ existing pins and silently carry stale versions forward.
 
 If you genuinely need a newer dep (e.g. a fresh CVE fix), say so in the PR description and we'll talk about it.
 
+## Reviewing a change (maintainers)
+
+Nothing reaches `main` without a PR. Before merging, run `scripts/review-pr.sh` on the branch (or `scripts/review-pr.sh v1.1.1` to review everything since a tag). It sends the code diff to a cross-vendor AI reviewer guided by `oracle-rubric.md`, then lists the security-sensitive paths (`src/` and the specific paths in `.github/CODEOWNERS`) for a human read, opened in [difftastic](https://difftastic.wilfred.me.uk/) when it is installed. Tests and docs are covered by CI and are not part of either pass.
+
 ## Releasing
 
 The release loop is three commands + one editor session. Do not bump version literals by hand — use the script, which writes every mechanical reference at once.
