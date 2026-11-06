@@ -15,17 +15,18 @@ import logging
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
 from mitmproxy import http
 
 from kow._derived_token_cache import KeyInputs
+from kow._fail_closed import emit_denial_and_503
 from kow.backends import BackendUnavailableError, SecretNotFoundError
 from kow.config import GithubAppInjector
 from kow.denials import (
     GithubAppExchangeFailedError,
     GithubAppKeyUnavailableError,
 )
+from kow.injectors._minted import emit_token_exchange, inject_minted, mint_through_cache
 from kow.injectors._token_transport import TokenResult, post
 from kow.injectors.jwt_bearer import encode as jwt_encode
 
@@ -132,14 +133,26 @@ class GithubAppResolver:
         try:
             private_key = client.get(injector.private_key_secret)
         except (BackendUnavailableError, SecretNotFoundError) as e:
-            self._deny_secret(
-                flow, audit, request_id, secret_name, target_host, e, "secret_unavailable"
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_unavailable:{type(e).__name__}",
+                secret_name=secret_name,
+                message=GithubAppKeyUnavailableError.client_message,
+                target_host=target_host,
             )
             return
         except Exception as e:  # noqa: BLE001
             _log.exception("github_app key fetch failed for %s: %s", secret_name, type(e).__name__)
-            self._deny_secret(
-                flow, audit, request_id, secret_name, target_host, e, "secret_fetch_error"
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_fetch_error:{type(e).__name__}",
+                secret_name=secret_name,
+                message=GithubAppKeyUnavailableError.client_message,
+                target_host=target_host,
             )
             return
 
@@ -152,147 +165,40 @@ class GithubAppResolver:
             client_id_value=f"{injector.app_id}:{injector.installation_id}",
             refresh_token_value=hashlib.sha256(private_key.reveal().encode("utf-8")).hexdigest(),
         )
-        cached = token_cache.get(cache_inputs)
-        if cached is not None:
-            self._inject(
-                flow,
+        token, result = mint_through_cache(
+            token_cache,
+            cache_inputs,
+            lambda: exchange(injector, private_key.reveal()),
+            GithubAppExchangeFailedError,
+        )
+        if result is not None:
+            emit_token_exchange(
                 audit,
                 request_id,
-                target_host,
                 secret_name,
-                secret_spec,
-                injector,
-                header_name,
-                cached,
-                companion_headers,
+                _installations_url(injector),
+                result,
+            )
+        if token is None:
+            assert result is not None
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"token_exchange_failed:{result.outcome}",
+                secret_name=secret_name,
+                message=GithubAppExchangeFailedError.client_message,
+                target_host=target_host,
             )
             return
-
-        holder: list[TokenResult] = []
-
-        def _fetch() -> tuple[str, float]:
-            result = exchange(injector, private_key.reveal())
-            holder.append(result)
-            if result.outcome != "success":
-                raise GithubAppExchangeFailedError(result)
-            assert result.token is not None
-            assert result.expires_at is not None
-            return result.token, result.expires_at
-
-        try:
-            token = token_cache.dedup_or_fetch(cache_inputs, _fetch)
-        except GithubAppExchangeFailedError as exc:
-            result = exc.result
-        else:
-            if holder:
-                self._emit_token_exchange(audit, request_id, secret_name, injector, holder[0])
-            self._inject(
-                flow,
-                audit,
-                request_id,
-                target_host,
-                secret_name,
-                secret_spec,
-                injector,
-                header_name,
-                token,
-                companion_headers,
-            )
-            return
-
-        self._emit_token_exchange(audit, request_id, secret_name, injector, result)
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "denied",
-                "reason": f"token_exchange_failed:{result.outcome}",
-                "secret_name": secret_name,
-                "destination": {"host": target_host, "port": flow.request.port},
-            }
-        )
-        flow.response = http.Response.make(
-            503,
-            GithubAppExchangeFailedError.client_message,
-            {"Content-Type": "text/plain"},
-        )
-
-    def _inject(
-        self,
-        flow: http.HTTPFlow,
-        audit: AuditWriter,
-        request_id: str,
-        target_host: str,
-        secret_name: str,
-        secret_spec: object,
-        injector: GithubAppInjector,
-        header_name: str,
-        token: str,
-        companion_headers: dict[str, dict[str, str]],
-    ) -> None:
-        flow.request.headers[header_name] = injector.render_value(token=token)
-        for companion_name, companion_value in companion_headers.get(secret_name, {}).items():
-            if companion_name not in flow.request.headers:
-                flow.request.headers[companion_name] = companion_value
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "allowed",
-                "reason": "binding_matched",
-                "secret_name": secret_name,
-                "binding_source": secret_spec.binding_source,  # type: ignore[attr-defined]
-                "destination": {
-                    "host": target_host,
-                    "port": flow.request.port,
-                    "path_prefix": flow.request.path.split("?", 1)[0][:64],
-                },
-            }
-        )
-
-    def _emit_token_exchange(
-        self,
-        audit: AuditWriter,
-        request_id: str,
-        secret_name: str,
-        injector: GithubAppInjector,
-        result: TokenResult,
-    ) -> None:
-        event: dict[str, object] = {
-            "type": "token_exchange",
-            "request_id": request_id,
-            "binding_name": secret_name,
-            "token_url_host": urlparse(_installations_url(injector)).hostname,
-            "outcome": result.outcome,
-        }
-        if result.outcome == "success" and result.expires_at is not None:
-            event["cache_ttl_effective_seconds"] = int(result.expires_at - time.time())
-        if result.error_description is not None:
-            event["error_description"] = result.error_description
-        audit.emit(event)
-
-    def _deny_secret(
-        self,
-        flow: http.HTTPFlow,
-        audit: AuditWriter,
-        request_id: str,
-        secret_name: str,
-        target_host: str,
-        err: Exception,
-        reason_prefix: str,
-    ) -> None:
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "denied",
-                "reason": f"{reason_prefix}:{type(err).__name__}",
-                "secret_name": secret_name,
-                "destination": {"host": target_host, "port": flow.request.port},
-            }
-        )
-        flow.response = http.Response.make(
-            503,
-            GithubAppKeyUnavailableError.client_message,
-            {"Content-Type": "text/plain"},
+        inject_minted(
+            flow,
+            audit,
+            request_id,
+            target_host,
+            secret_name,
+            secret_spec.binding_source,
+            header_name,
+            injector.render_value(token=token),
+            companion_headers,
         )

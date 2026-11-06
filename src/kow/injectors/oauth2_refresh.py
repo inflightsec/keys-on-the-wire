@@ -38,6 +38,7 @@ from urllib.parse import urlencode, urlparse
 from mitmproxy import http
 
 from kow._derived_token_cache import DerivedTokenCache, KeyInputs
+from kow._fail_closed import emit_allowed, emit_denial_and_503
 from kow._ssrf_guard import SsrfBlockedError, check_url_not_internal
 from kow._textguard import has_forbidden_char
 from kow.backends import (
@@ -295,7 +296,7 @@ def _parse_success(
         )
 
     access_token = str(payload["access_token"])
-    # The resolver injects this straight into a header (C1, review of 1.2.0).
+    # The resolver injects this straight into a header (Oracle C1).
     if has_forbidden_char(access_token):
         return ExchangeResult(outcome="response_parse_failed")
     expires_in = payload.get("expires_in")
@@ -437,20 +438,14 @@ class OauthResolver:
             client_secret_value = client.get(oauth_injector.client_secret_secret)
             refresh_token_value = client.get(oauth_injector.refresh_token_secret)
         except (BackendUnavailableError, SecretNotFoundError) as e:
-            audit.emit(
-                {
-                    "type": "inject_decision",
-                    "request_id": request_id,
-                    "decision": "denied",
-                    "reason": f"secret_unavailable:{type(e).__name__}",
-                    "secret_name": secret_name,
-                    "destination": {"host": target_host, "port": flow.request.port},
-                }
-            )
-            flow.response = http.Response.make(
-                503,
-                OauthInputUnavailableError.client_message,
-                {"Content-Type": "text/plain"},
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_unavailable:{type(e).__name__}",
+                secret_name=secret_name,
+                message=OauthInputUnavailableError.client_message,
+                target_host=target_host,
             )
             return
         except Exception as e:  # noqa: BLE001
@@ -459,20 +454,14 @@ class OauthResolver:
                 secret_name,
                 type(e).__name__,
             )
-            audit.emit(
-                {
-                    "type": "inject_decision",
-                    "request_id": request_id,
-                    "decision": "denied",
-                    "reason": f"secret_fetch_error:{type(e).__name__}",
-                    "secret_name": secret_name,
-                    "destination": {"host": target_host, "port": flow.request.port},
-                }
-            )
-            flow.response = http.Response.make(
-                503,
-                OauthInputFetchFailedError.client_message,
-                {"Content-Type": "text/plain"},
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_fetch_error:{type(e).__name__}",
+                secret_name=secret_name,
+                message=OauthInputFetchFailedError.client_message,
+                target_host=target_host,
             )
             return
 
@@ -585,20 +574,14 @@ class OauthResolver:
             oauth_injector=oauth_injector,
             result=result,
         )
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "denied",
-                "reason": f"token_exchange_failed:{result.outcome}",
-                "secret_name": secret_name,
-                "destination": {"host": target_host, "port": flow.request.port},
-            }
-        )
-        flow.response = http.Response.make(
-            503,
-            OauthExchangeFailedError.client_message,
-            {"Content-Type": "text/plain"},
+        emit_denial_and_503(
+            audit=audit,
+            flow=flow,
+            request_id=request_id,
+            reason=f"token_exchange_failed:{result.outcome}",
+            secret_name=secret_name,
+            message=OauthExchangeFailedError.client_message,
+            target_host=target_host,
         )
 
     def _emit_token_exchange_audit(
@@ -827,18 +810,11 @@ class OauthResolver:
             if companion_name not in flow.request.headers:
                 flow.request.headers[companion_name] = companion_value
         # G6 ORDERING — DO NOT REORDER (see header path comment).
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "allowed",
-                "reason": "binding_matched",
-                "secret_name": secret_name,
-                "binding_source": secret_spec.binding_source,
-                "destination": {
-                    "host": target_host,
-                    "port": flow.request.port,
-                    "path_prefix": flow.request.path.split("?", 1)[0][:64],
-                },
-            }
+        emit_allowed(
+            audit=audit,
+            flow=flow,
+            request_id=request_id,
+            secret_name=secret_name,
+            binding_source=secret_spec.binding_source,
+            target_host=target_host,
         )

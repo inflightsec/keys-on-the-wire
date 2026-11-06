@@ -27,8 +27,9 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from mitmproxy import http
 
+from kow._fail_closed import emit_allowed, emit_denial_and_503
 from kow.backends import BackendUnavailableError, SecretNotFoundError
-from kow.injectors.hmac_signer import _deny, _emit_allowed
+from kow.denials import SigningKeyUnavailableError
 
 if TYPE_CHECKING:
     from kow.audit import AuditWriter
@@ -105,24 +106,26 @@ class JwtResolver:
         try:
             key = client.get(injector.signing_key_secret)
         except (BackendUnavailableError, SecretNotFoundError) as e:
-            _deny(
-                flow,
-                audit,
-                request_id,
-                secret_name,
-                target_host,
-                f"secret_unavailable:{type(e).__name__}",
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_unavailable:{type(e).__name__}",
+                secret_name=secret_name,
+                message=SigningKeyUnavailableError.client_message,
+                target_host=target_host,
             )
             return
         except Exception as e:  # noqa: BLE001
             _log.exception("jwt signing-key fetch failed for %s: %s", secret_name, type(e).__name__)
-            _deny(
-                flow,
-                audit,
-                request_id,
-                secret_name,
-                target_host,
-                f"secret_fetch_error:{type(e).__name__}",
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_fetch_error:{type(e).__name__}",
+                secret_name=secret_name,
+                message=SigningKeyUnavailableError.client_message,
+                target_host=target_host,
             )
             return
 
@@ -143,15 +146,23 @@ class JwtResolver:
             token = encode(payload=claims, key=key.reveal(), algorithm=injector.algorithm)
         except Exception as e:  # noqa: BLE001  (bad key / algorithm mismatch)
             _log.exception("jwt minting failed for %s: %s", secret_name, type(e).__name__)
-            _deny(
-                flow,
-                audit,
-                request_id,
-                secret_name,
-                target_host,
-                f"jwt_signing_error:{type(e).__name__}",
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"jwt_signing_error:{type(e).__name__}",
+                secret_name=secret_name,
+                message=SigningKeyUnavailableError.client_message,
+                target_host=target_host,
             )
             return
 
         flow.request.headers[header_name] = injector.format.replace("{jwt}", token)
-        _emit_allowed(audit, request_id, secret_name, secret_spec.binding_source, flow, target_host)
+        emit_allowed(
+            audit=audit,
+            flow=flow,
+            request_id=request_id,
+            secret_name=secret_name,
+            binding_source=secret_spec.binding_source,
+            target_host=target_host,
+        )

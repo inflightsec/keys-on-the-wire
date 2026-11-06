@@ -45,3 +45,32 @@ def emit_denial_and_503(
         message,
         {"Content-Type": "text/plain"},
     )
+
+
+def emit_allowed(
+    *,
+    audit: AuditWriter,
+    flow: http.HTTPFlow,
+    request_id: str,
+    secret_name: str,
+    binding_source: str,
+    target_host: str,
+) -> None:
+    """Emit the allowed ``inject_decision`` audit record. Call it AFTER the
+    in-memory header write and BEFORE the hook returns: emit() fsyncs, and no
+    bytes leave the proxy until the hook returns (G6)."""
+    audit.emit(
+        {
+            "type": "inject_decision",
+            "request_id": request_id,
+            "decision": "allowed",
+            "reason": "binding_matched",
+            "secret_name": secret_name,
+            "binding_source": binding_source,
+            "destination": {
+                "host": target_host,
+                "port": flow.request.port,
+                "path_prefix": flow.request.path.split("?", 1)[0][:64],
+            },
+        }
+    )

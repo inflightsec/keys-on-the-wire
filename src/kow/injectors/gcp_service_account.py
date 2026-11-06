@@ -29,14 +29,16 @@ import logging
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, urlencode
 
 from mitmproxy import http
 
 from kow._derived_token_cache import KeyInputs
+from kow._fail_closed import emit_denial_and_503
 from kow.backends import BackendUnavailableError, SecretNotFoundError
 from kow.config import GcpServiceAccountInjector
 from kow.denials import GcpKeyUnavailableError, GcpMintFailedError
+from kow.injectors._minted import emit_token_exchange, inject_minted, mint_through_cache
 from kow.injectors._token_transport import TokenResult, post
 from kow.injectors.jwt_bearer import encode as jwt_encode
 
@@ -246,7 +248,7 @@ def _parse_iam_token(body: bytes, injector: GcpServiceAccountInjector) -> TokenR
         except ValueError:
             exp_unix = None
     # An unreadable expiry falls back to the configured lifetime, but one that
-    # says the token is already dead must not buy it a fresh one (C5, review of 1.2.0).
+    # says the token is already dead must not buy it a fresh one (Oracle C5).
     if exp_unix is not None and exp_unix <= now:
         return TokenResult(outcome="response_parse_failed")
     ceiling = now + injector.lifetime_seconds
@@ -363,14 +365,26 @@ class GcpServiceAccountResolver:
             try:
                 key_pem = client.get(injector.private_key_secret).reveal()
             except (BackendUnavailableError, SecretNotFoundError) as e:
-                self._deny(
-                    flow, audit, request_id, secret_name, target_host, e, "secret_unavailable"
+                emit_denial_and_503(
+                    audit=audit,
+                    flow=flow,
+                    request_id=request_id,
+                    reason=f"secret_unavailable:{type(e).__name__}",
+                    secret_name=secret_name,
+                    message=GcpKeyUnavailableError.client_message,
+                    target_host=target_host,
                 )
                 return
             except Exception as e:  # noqa: BLE001
                 _log.exception("gcp key fetch failed for %s: %s", secret_name, type(e).__name__)
-                self._deny(
-                    flow, audit, request_id, secret_name, target_host, e, "secret_fetch_error"
+                emit_denial_and_503(
+                    audit=audit,
+                    flow=flow,
+                    request_id=request_id,
+                    reason=f"secret_fetch_error:{type(e).__name__}",
+                    secret_name=secret_name,
+                    message=GcpKeyUnavailableError.client_message,
+                    target_host=target_host,
                 )
                 return
 
@@ -391,155 +405,47 @@ class GcpServiceAccountResolver:
                 hashlib.sha256(key_pem.encode("utf-8")).hexdigest() if key_pem else "adc"
             ),
         )
-        cached = token_cache.get(cache_inputs)
-        if cached is not None:
-            self._inject(
-                flow,
+        token, result = mint_through_cache(
+            token_cache, cache_inputs, lambda: mint(injector, key_pem), GcpMintFailedError
+        )
+        if result is not None:
+            emit_token_exchange(
                 audit,
                 request_id,
-                target_host,
                 secret_name,
-                secret_spec,
-                injector,
-                header_name,
-                cached,
-                companion_headers,
+                _mint_endpoint(injector),
+                result,
+                # mode is security-relevant, not cosmetic: without it an auditor
+                # cannot tell a keyless network mint (impersonate) from one that
+                # used a vault-held key (jwt_bearer_grant) from one that made no
+                # network call (self_signed_jwt). Adding a FIELD keeps ADR-0023's
+                # closed set of event TYPES intact (Oracle review, 2026-09-16).
+                # error_description is deliberately NOT audited: it is provider
+                # text, and the IAM leg sends a real source token that a hostile
+                # endpoint could reflect into the durable log (Oracle, 2026-09-11).
+                extra={"mode": injector.mode},
+                include_error_description=False,
+            )
+        if token is None:
+            assert result is not None
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"token_exchange_failed:{result.outcome}",
+                secret_name=secret_name,
+                message=GcpMintFailedError.client_message,
+                target_host=target_host,
             )
             return
-
-        holder: list[TokenResult] = []
-
-        def _fetch() -> tuple[str, float]:
-            result = mint(injector, key_pem)
-            holder.append(result)
-            if result.outcome != "success":
-                raise GcpMintFailedError(result)
-            assert result.token is not None
-            assert result.expires_at is not None
-            return result.token, result.expires_at
-
-        try:
-            token = token_cache.dedup_or_fetch(cache_inputs, _fetch)
-        except GcpMintFailedError as exc:
-            result = exc.result
-        else:
-            if holder:
-                self._emit_token_exchange(audit, request_id, secret_name, injector, holder[0])
-            self._inject(
-                flow,
-                audit,
-                request_id,
-                target_host,
-                secret_name,
-                secret_spec,
-                injector,
-                header_name,
-                token,
-                companion_headers,
-            )
-            return
-
-        self._emit_token_exchange(audit, request_id, secret_name, injector, result)
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "denied",
-                "reason": f"token_exchange_failed:{result.outcome}",
-                "secret_name": secret_name,
-                "destination": {"host": target_host, "port": flow.request.port},
-            }
-        )
-        flow.response = http.Response.make(
-            503, GcpMintFailedError.client_message, {"Content-Type": "text/plain"}
-        )
-
-    def _inject(
-        self,
-        flow: http.HTTPFlow,
-        audit: AuditWriter,
-        request_id: str,
-        target_host: str,
-        secret_name: str,
-        secret_spec: object,
-        injector: GcpServiceAccountInjector,
-        header_name: str,
-        token: str,
-        companion_headers: dict[str, dict[str, str]],
-    ) -> None:
-        flow.request.headers[header_name] = injector.render_value(access_token=token)
-        for companion_name, companion_value in companion_headers.get(secret_name, {}).items():
-            if companion_name not in flow.request.headers:
-                flow.request.headers[companion_name] = companion_value
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "allowed",
-                "reason": "binding_matched",
-                "secret_name": secret_name,
-                "binding_source": secret_spec.binding_source,  # type: ignore[attr-defined]
-                "destination": {
-                    "host": target_host,
-                    "port": flow.request.port,
-                    "path_prefix": flow.request.path.split("?", 1)[0][:64],
-                },
-            }
-        )
-
-    def _emit_token_exchange(
-        self,
-        audit: AuditWriter,
-        request_id: str,
-        secret_name: str,
-        injector: GcpServiceAccountInjector,
-        result: TokenResult,
-    ) -> None:
-        event: dict[str, object] = {
-            "type": "token_exchange",
-            "request_id": request_id,
-            "binding_name": secret_name,
-            # ``mode`` is security-relevant, not cosmetic: the three modes are
-            # materially different trust paths, and without this an auditor
-            # cannot tell a keyless network mint (`impersonate`) from one that
-            # used a vault-held private key (`jwt_bearer_grant`) from one that
-            # never made a network call at all (`self_signed_jwt`). They would
-            # all read as an identical `token_exchange`. Adding a FIELD to an
-            # existing event keeps ADR-0023's closed set of event TYPES intact.
-            # (Oracle review, 2026-09-16.)
-            "mode": injector.mode,
-            "token_url_host": urlparse(_mint_endpoint(injector)).hostname,
-            "outcome": result.outcome,
-        }
-        if result.outcome == "success" and result.expires_at is not None:
-            event["cache_ttl_effective_seconds"] = int(result.expires_at - time.time())
-        # Deliberately NOT audited: ``result.error_description`` is provider
-        # text. The IAM leg sends a real source token in the request, so a
-        # compromised or misconfigured endpoint can reflect it in an error body,
-        # and the audit log is durable. Only the locally-derived outcome label
-        # goes in (Oracle review, 2026-09-11).
-        audit.emit(event)
-
-    def _deny(
-        self,
-        flow: http.HTTPFlow,
-        audit: AuditWriter,
-        request_id: str,
-        secret_name: str,
-        target_host: str,
-        err: Exception,
-        reason_prefix: str,
-    ) -> None:
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "denied",
-                "reason": f"{reason_prefix}:{type(err).__name__}",
-                "secret_name": secret_name,
-                "destination": {"host": target_host, "port": flow.request.port},
-            }
-        )
-        flow.response = http.Response.make(
-            503, GcpKeyUnavailableError.client_message, {"Content-Type": "text/plain"}
+        inject_minted(
+            flow,
+            audit,
+            request_id,
+            target_host,
+            secret_name,
+            secret_spec.binding_source,
+            header_name,
+            injector.render_value(access_token=token),
+            companion_headers,
         )

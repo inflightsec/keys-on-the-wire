@@ -23,6 +23,7 @@ from urllib.parse import parse_qsl, quote, urlsplit
 
 from mitmproxy import http
 
+from kow._fail_closed import emit_allowed, emit_denial_and_503
 from kow.backends import BackendUnavailableError, SecretNotFoundError
 from kow.denials import Sigv4CredentialUnavailableError
 
@@ -262,13 +263,14 @@ class Sigv4Resolver:
                 else None
             )
         except (BackendUnavailableError, SecretNotFoundError) as e:
-            self._deny(
-                flow,
-                audit,
-                request_id,
-                secret_name,
-                target_host,
-                f"secret_unavailable:{type(e).__name__}",
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_unavailable:{type(e).__name__}",
+                secret_name=secret_name,
+                message=Sigv4CredentialUnavailableError.client_message,
+                target_host=target_host,
             )
             return
         except Exception as e:  # noqa: BLE001
@@ -277,13 +279,14 @@ class Sigv4Resolver:
                 secret_name,
                 type(e).__name__,
             )
-            self._deny(
-                flow,
-                audit,
-                request_id,
-                secret_name,
-                target_host,
-                f"secret_fetch_error:{type(e).__name__}",
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_fetch_error:{type(e).__name__}",
+                secret_name=secret_name,
+                message=Sigv4CredentialUnavailableError.client_message,
+                target_host=target_host,
             )
             return
 
@@ -316,43 +319,11 @@ class Sigv4Resolver:
         if result.security_token is not None:
             flow.request.headers["x-amz-security-token"] = result.security_token
 
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "allowed",
-                "reason": "binding_matched",
-                "secret_name": secret_name,
-                "binding_source": secret_spec.binding_source,
-                "destination": {
-                    "host": target_host,
-                    "port": flow.request.port,
-                    "path_prefix": flow.request.path.split("?", 1)[0][:64],
-                },
-            }
-        )
-
-    @staticmethod
-    def _deny(
-        flow: http.HTTPFlow,
-        audit: AuditWriter,
-        request_id: str,
-        secret_name: str,
-        target_host: str,
-        reason: str,
-    ) -> None:
-        audit.emit(
-            {
-                "type": "inject_decision",
-                "request_id": request_id,
-                "decision": "denied",
-                "reason": reason,
-                "secret_name": secret_name,
-                "destination": {"host": target_host, "port": flow.request.port},
-            }
-        )
-        flow.response = http.Response.make(
-            503,
-            Sigv4CredentialUnavailableError.client_message,
-            {"Content-Type": "text/plain"},
+        emit_allowed(
+            audit=audit,
+            flow=flow,
+            request_id=request_id,
+            secret_name=secret_name,
+            binding_source=secret_spec.binding_source,
+            target_host=target_host,
         )

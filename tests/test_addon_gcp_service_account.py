@@ -768,7 +768,7 @@ def test_cache_identity_covers_every_mint_input() -> None:
 
 
 def test_iam_token_that_has_already_expired_is_refused() -> None:
-    """C5 (review of 1.2.0): a past expireTime used to be replaced with now +
+    """Oracle C5: a past expireTime used to be replaced with now +
     lifetime, caching a dead token for up to an hour. An UNREADABLE expiry still
     falls back to the lifetime (see the unparseable-expiry test above)."""
     from kow.config_models import GcpServiceAccountInjector

@@ -52,7 +52,7 @@ class TokenResult:
 
     def __post_init__(self) -> None:
         # Every resolver writes a minted token straight into a header, past the
-        # CR/LF gate the static path has, so refuse it here (C1, review of 1.2.0).
+        # CR/LF gate the static path has, so refuse it here (Oracle C1).
         if self.outcome == "success" and self.token is not None and has_forbidden_char(self.token):
             object.__setattr__(self, "outcome", "response_parse_failed")
             object.__setattr__(self, "token", None)

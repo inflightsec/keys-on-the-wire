@@ -308,7 +308,7 @@ class SecretSpec(BaseModel):
     def reject_header_break_characters(self) -> SecretSpec:
         """HeaderInjector checks its own fields; the token-minting and signing
         injectors' ``header``/``format`` become header bytes the same way and
-        are just as settable from a vault note (C1, review of 1.2.0)."""
+        are just as settable from a vault note (Oracle C1)."""
         for leaf in iter_leaf_injectors(self.inject):
             if isinstance(leaf, HeaderInjector | BodyInjector):
                 continue

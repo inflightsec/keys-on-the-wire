@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from mitmproxy import http
 
+from kow._fail_closed import emit_allowed, emit_denial_and_503
 from kow.backends import BackendUnavailableError, SecretNotFoundError
 from kow.denials import SigningKeyUnavailableError
 
@@ -101,24 +102,26 @@ class HmacResolver:
         try:
             key = client.get(injector.secret_key_secret)
         except (BackendUnavailableError, SecretNotFoundError) as e:
-            _deny(
-                flow,
-                audit,
-                request_id,
-                secret_name,
-                target_host,
-                f"secret_unavailable:{type(e).__name__}",
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_unavailable:{type(e).__name__}",
+                secret_name=secret_name,
+                message=SigningKeyUnavailableError.client_message,
+                target_host=target_host,
             )
             return
         except Exception as e:  # noqa: BLE001
             _log.exception("hmac key fetch failed for %s: %s", secret_name, type(e).__name__)
-            _deny(
-                flow,
-                audit,
-                request_id,
-                secret_name,
-                target_host,
-                f"secret_fetch_error:{type(e).__name__}",
+            emit_denial_and_503(
+                audit=audit,
+                flow=flow,
+                request_id=request_id,
+                reason=f"secret_fetch_error:{type(e).__name__}",
+                secret_name=secret_name,
+                message=SigningKeyUnavailableError.client_message,
+                target_host=target_host,
             )
             return
 
@@ -142,54 +145,11 @@ class HmacResolver:
         flow.request.headers[injector.header] = signature
         if injector.timestamp_header is not None:
             flow.request.headers[injector.timestamp_header] = timestamp
-        _emit_allowed(audit, request_id, secret_name, secret_spec.binding_source, flow, target_host)
-
-
-def _deny(
-    flow: http.HTTPFlow,
-    audit: AuditWriter,
-    request_id: str,
-    secret_name: str,
-    target_host: str,
-    reason: str,
-) -> None:
-    audit.emit(
-        {
-            "type": "inject_decision",
-            "request_id": request_id,
-            "decision": "denied",
-            "reason": reason,
-            "secret_name": secret_name,
-            "destination": {"host": target_host, "port": flow.request.port},
-        }
-    )
-    flow.response = http.Response.make(
-        503,
-        SigningKeyUnavailableError.client_message,
-        {"Content-Type": "text/plain"},
-    )
-
-
-def _emit_allowed(
-    audit: AuditWriter,
-    request_id: str,
-    secret_name: str,
-    binding_source: str,
-    flow: http.HTTPFlow,
-    target_host: str,
-) -> None:
-    audit.emit(
-        {
-            "type": "inject_decision",
-            "request_id": request_id,
-            "decision": "allowed",
-            "reason": "binding_matched",
-            "secret_name": secret_name,
-            "binding_source": binding_source,
-            "destination": {
-                "host": target_host,
-                "port": flow.request.port,
-                "path_prefix": flow.request.path.split("?", 1)[0][:64],
-            },
-        }
-    )
+        emit_allowed(
+            audit=audit,
+            flow=flow,
+            request_id=request_id,
+            secret_name=secret_name,
+            binding_source=secret_spec.binding_source,
+            target_host=target_host,
+        )

@@ -1,4 +1,4 @@
-"""Header splitting through token-minting injectors (C1, review of 1.2.0).
+"""Header splitting through token-minting injectors (Oracle C1).
 
 The CR/LF gate in HeaderInjectionHandler runs only on the static-secret path;
 minted tokens go out through each resolver's own header write. So both trust
