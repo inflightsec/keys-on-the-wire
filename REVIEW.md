@@ -17,8 +17,6 @@ Review of `release/1.2.0` (2026-11-05, Oracle cross-vendor pass, checked by hand
 - `backends/keychain.py` `_keyd_trust_error`: walks the helper's lexical parents; a parent that
   is a symlink has its target checked but not the target's own ancestors. Unconfirmed; depends
   on the real candidate paths.
-- `injectors/gcp_service_account.py`: the two GCP deny paths copy `emit_denial_and_503` instead
-  of calling it. Same order, so not fail-open; duplication only.
 - `cli/binding.py` `_warn_note_shadows_file`: the delete-note advice ignores method/path
   restrictions when the host sets match. Not checked.
 - Not read by Oracle (its secret gate refused them), so not reviewed by AI at all:

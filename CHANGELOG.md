@@ -6,33 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Fixed
-
-- **A failed reload no longer leaves the old SSH agent signing.** If the credential endpoint could not bind (port in use), the SSH agent restart was skipped and the previous config's signing oracle kept running after a reload meant to revoke it.
-- **Token-minting injectors now refuse header-splitting characters.** The CR/LF gate covered only static-secret headers. `header`/`format` on `gcp_service_account`, `oauth2_client_credentials`, `oauth2_refresh`, `github_app`, `jwt_bearer`, `sigv4` and `hmac` bindings are now checked at config load, and a minted token carrying a control character is a parse failure.
-- **An already-expired GCP IAM token is refused** instead of being cached for a fresh lifetime.
-
-## [1.2.0], 2026-10-11
+## [1.2.0], 2026-11-06
 
 ### Added
 
-- **SSH signing oracle** (experimental, Linux-only, opt-in) — [ADR-0053](docs/adrs/ADR-0053-ssh-agent-signing-oracle.md). kow speaks the SSH agent protocol and signs challenges with vault-held keys, so the caller never holds the private key. A verified `session-bind@openssh.com` proof pins each session to per-binding host keys. Refuses to start without `SO_PEERCRED` (macOS).
-- **Vault notes that shadow a file binding now warn at load**, loudly when the note downgrades a richer injector to static header substitution.
-- **Request-splitting guard on note-settable text.** Unicode break characters in `header`, `format` or the secret value are refused fail-closed (NEL/LS/PS, not just CRLF), and header names must be valid RFC 7230 tokens.
-- **`kow secret add --stdin-raw`** reads stdin byte for byte, keeping the trailing newline a PEM needs. `--stdin` strips it, which silently truncated multi-line credentials to their first line.
-- **The macOS Keychain can hold a multi-line secret** ([ADR-0051](docs/adrs/ADR-0051-keychain-helper-transmit-path.md)). `use_helper: require` routes operations through the signed `kow-keyd` helper, which sends raw bytes instead of using `security -i`, whose line protocol ends at a newline. Transport only, **not access control**. Default `off`; **turning it on is a migration**, since items written by `security(1)` must be re-added. See [docs/keychain-helper.md](docs/keychain-helper.md).
-- **Google service-account credentials, brokered** ([ADR-0050](docs/adrs/ADR-0050-gcp-service-account-credentials.md)). The `gcp_service_account` injector mints via `impersonate` (default, so **no service-account key exists anywhere**), `jwt_bearer_grant` or `self_signed_jwt`. An opt-in loopback ADC endpoint lets Google libraries, `gcloud` and Terraform work unchanged; it serves the placeholder, never a real credential. Limits: any local process can fetch that placeholder, client-side caching delays revocation, and gRPC transports are unmeasured. See [docs/gcp-service-account.md](docs/gcp-service-account.md).
+- **SSH signing oracle** (experimental, Linux-only, opt-in, [ADR-0053](docs/adrs/ADR-0053-ssh-agent-signing-oracle.md)). Signs SSH challenges with vault-held keys; each session is pinned to per-binding host keys.
+- **Google service-account credentials** ([ADR-0050](docs/adrs/ADR-0050-gcp-service-account-credentials.md)). `gcp_service_account` mints via `impersonate` (default, keyless), `jwt_bearer_grant` or `self_signed_jwt`. An opt-in loopback ADC endpoint serves the placeholder to Google tools; any local process can read it. See [docs/gcp-service-account.md](docs/gcp-service-account.md).
+- **Multi-line macOS Keychain secrets** through the `kow-keyd` helper (`use_helper: require`, [ADR-0051](docs/adrs/ADR-0051-keychain-helper-transmit-path.md)). Transport only, not access control. Turning it on is a migration: re-add existing items. See [docs/keychain-helper.md](docs/keychain-helper.md).
+- **`kow secret add --stdin-raw`** keeps the trailing newline a PEM needs.
+- **A warning when a vault note shadows a file binding.**
+- **Request-splitting guard.** Break characters (not just CRLF) in any injector's `header` or `format`, in secret values and in minted tokens are refused. Header names must be RFC 7230 tokens.
 
 ### Changed
 
-- **New placeholders use the `kow-PLACEHOLDER-` prefix.** Derived placeholders still emit `avp-`, because flipping them would stop injection for every already-written env file until `kow env` was re-run. Both are accepted on read, so existing notes stay valid and must not be edited. Derivation flips in 2.0.0 with a migration. See the [ADR-0045](docs/adrs/ADR-0045-rename-keys-on-the-wire.md) amendment.
+- **New placeholders use `kow-PLACEHOLDER-`.** `avp-` is still accepted, and derived placeholders keep it until 2.0.0. Leave existing notes as they are ([ADR-0045](docs/adrs/ADR-0045-rename-keys-on-the-wire.md)).
 
 ### Fixed
 
-- **Correction: `kow-keyd` does not make an item kow-only, and the 1.1.1 entry claiming so is wrong.** The helper has no caller authentication, so any process running as the operator can read the secret. The Keychain backend's boundary is the macOS user account ([ADR-0046](docs/adrs/ADR-0046-macos-keychain-backend.md)); run kow in its own account ([docs/macos-isolation.md](docs/macos-isolation.md)).
-- **Correction: off Google infrastructure, `impersonate` with `source: adc` is not safer, and ADR-0050 said it was.** ADC resolves to a plaintext file holding a long-lived **user** refresh token. It is the keyless answer on GCE, GKE and Cloud Run; elsewhere, use a seat key.
-- **`kow-keyd set` updates in place** rather than delete-then-add, which could leave the keychain holding no value at all.
-- **macOS e2e substitution assertions never reached the proxy.** curl has treated localhost as implicit no-proxy since 7.86, so the requests went direct and the unchanged placeholder looked like a substitution failure. Now passes `--noproxy ""`.
+- **Correction:** `kow-keyd` does not make an item kow-only, as the 1.1.1 entry claimed. Any process running as the operator can read it; run kow in its own account ([docs/macos-isolation.md](docs/macos-isolation.md)).
+- **Correction:** off Google infrastructure, `impersonate` with `source: adc` relies on a long-lived user refresh token. Use a seat key there.
+- **`kow-keyd set` updates in place** instead of delete-then-add.
 
 ## [1.1.1], 2026-08-28
 

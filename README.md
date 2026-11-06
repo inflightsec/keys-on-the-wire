@@ -33,7 +33,7 @@ Bearer, `token`, X-API-Key, Basic, OAuth2 refresh and client-credentials, JWT be
 ## Try it in two minutes, no vault
 
 ```bash
-pipx install keys-on-the-wire        # or: brew install inflightsec/keys-on-the-wire/keys-on-the-wire
+uv tool install keys-on-the-wire     # or pipx install, or brew install inflightsec/keys-on-the-wire/keys-on-the-wire
 sudo kow setup --static              # service user, CA, and a starter EXAMPLE_API_KEY bound to example.com
 kow run -- curl -s -o /dev/null -w '%{http_code}\n' --cacert /etc/kow/ca.pem \
   -H "Authorization: Bearer example_PLACEHOLDER_0001" https://example.com
